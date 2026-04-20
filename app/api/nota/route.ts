@@ -130,3 +130,21 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: error.message, stack: error.stack }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    await initDb();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    
+    if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+    
+    const db = await getDb();
+    await db.execute('DELETE FROM nota_pajak WHERE id = ?', [id]);
+    
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('API DELETE Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

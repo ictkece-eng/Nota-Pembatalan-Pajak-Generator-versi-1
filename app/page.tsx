@@ -202,6 +202,26 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleDelete = async (id: number) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus data ini dari history?')) return;
+    
+    try {
+      const res = await fetch(`/api/nota?id=${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        if (editingId === id) setEditingId(null);
+        fetchHistory();
+      } else {
+        const result = await res.json();
+        alert(result.error || "Gagal menghapus data.");
+      }
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      alert("Terjadi kesalahan saat menghapus data.");
+    }
+  };
+
   const totalAmount = useMemo(() => {
     return data.items.reduce((sum, item) => sum + item.amount, 0);
   }, [data.items]);
@@ -801,9 +821,14 @@ export default function Home() {
                               <td>{item.penerima_name}</td>
                               <td className="small">{new Date(item.created_at).toLocaleString('id-ID')}</td>
                               <td className="text-center">
-                                <Button variant="outline-primary" size="sm" onClick={() => loadFromHistory(item)} className="fw-bold">
-                                  Edit & Buka
-                                </Button>
+                                <div className="d-flex justify-content-center gap-2">
+                                  <Button variant="outline-primary" size="sm" onClick={() => loadFromHistory(item)} className="fw-bold d-flex align-items-center gap-1">
+                                    <FileText size={14} /> Edit
+                                  </Button>
+                                  <Button variant="outline-danger" size="sm" onClick={() => handleDelete(item.id)} className="d-flex align-items-center gap-1">
+                                    <Trash2 size={14} /> Hapus
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           ))}
