@@ -4,16 +4,48 @@ let pool: mysql.Pool | null = null;
 
 export async function getDb() {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL || 'mysql://3cmJDj1dFPpqYxA.root:hBPtj3S977s7dK9Z@gateway01.ap-southeast-1.prod.aws.tidbcloud.com:4000/Billing';
-    pool = mysql.createPool({
-      uri: connectionString,
-      ssl: {
-        rejectUnauthorized: false
-      },
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0
-    });
+    let connectionString = process.env.DATABASE_URL || 'mysql://3cmJDj1dFPpqYxA.root:hBPtj3S977s7dK9Z@gateway01.ap-southeast-1.prod.aws.tidbcloud.com:4000/Billing';
+    
+    // Clean string from potential quotes and ALL whitespace/newlines
+    connectionString = connectionString.replace(/\s/g, '').replace(/['"]/g, '');
+
+    const sslConfig = {
+      minVersion: 'TLSv1.2',
+      rejectUnauthorized: false
+    };
+
+    // Use a custom regex to parse the MySQL connection string
+    // Format: mysql://user:password@host:port/database
+    const regex = /^mysql:\/\/([^:]+):([^@]+)@([^:/]+)(?::(\d+))?\/(.+)$/;
+    const match = connectionString.match(regex);
+
+    if (match) {
+      const [, user, password, host, port, database] = match;
+      pool = mysql.createPool({
+        host: host,
+        port: parseInt(port) || 4000,
+        user: decodeURIComponent(user),
+        password: decodeURIComponent(password),
+        database: decodeURIComponent(database),
+        ssl: sslConfig,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10000
+      });
+    } else {
+      // Fallback to the uri property if regex fails
+      pool = mysql.createPool({
+        uri: connectionString,
+        ssl: sslConfig,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10000
+      });
+    }
   }
   return pool;
 }

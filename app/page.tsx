@@ -118,12 +118,14 @@ const renderNPWP = (npwp: string) => {
 
 export default function Home() {
   const [data, setData] = useState<NotaData>(initialData);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('generator');
   const [history, setHistory] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const notaRef = useRef<HTMLDivElement>(null);
@@ -152,25 +154,31 @@ export default function Home() {
   const handleSaveToDb = async () => {
     setIsSaving(true);
     setSaveSuccess(false);
+    setSaveError(null);
     try {
       const res = await fetch('/api/nota', {
-        method: 'POST',
+        method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify(editingId ? { ...data, id: editingId } : data)
       });
+      const result = await res.json();
       if (res.ok) {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
         fetchHistory();
+      } else {
+        setSaveError(result.error || "Gagal menyimpan data ke database.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save:", err);
+      setSaveError(err.message || "Terjadi kesalahan saat menghubungkan ke database.");
     } finally {
       setIsSaving(false);
     }
   };
 
   const loadFromHistory = (item: any) => {
+    setEditingId(item.id);
     const formattedItem: NotaData = {
       nomor: item.nomor,
       fakturNomor: item.faktur_nomor,
@@ -379,7 +387,7 @@ export default function Home() {
             </Button>
             {activeTab === 'generator' && (
               <>
-                <Button variant="light" size="sm" onClick={() => setData(initialData)}>Reset</Button>
+                <Button variant="light" size="sm" onClick={() => { setData(initialData); setEditingId(null); }}>Reset</Button>
                 <Button variant="info" onClick={handleDownloadPDF} className="fw-bold d-flex align-items-center gap-2 text-white">
                   <Download size={18} /> Download PDF (A4)
                 </Button>
@@ -404,16 +412,31 @@ export default function Home() {
               {/* Form Side */}
               <Col xl={6} className="no-print">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                   <h5 className="mb-0 fw-bold">Editor Nota</h5>
-                   <Button 
-                    variant={saveSuccess ? "success" : "primary"} 
-                    onClick={handleSaveToDb} 
-                    disabled={isSaving}
-                    className="d-flex align-items-center gap-2"
-                  >
-                    {isSaving ? <Spinner animation="border" size="sm" /> : saveSuccess ? <CheckCircle2 size={18} /> : <Save size={18} />}
-                    {isSaving ? 'Menyimpan...' : saveSuccess ? 'Berhasil Disimpan' : 'Simpan ke History'}
-                  </Button>
+                   <div className="d-flex align-items-center gap-2">
+                    <h5 className="mb-0 fw-bold">Editor Nota</h5>
+                    {editingId && (
+                      <Alert variant="info" className="py-1 px-2 m-0 small d-flex align-items-center gap-1">
+                        Mode Edit (ID: {editingId})
+                        <Button variant="link" size="sm" className="p-0 text-decoration-none" onClick={() => setEditingId(null)}>Batal Edit</Button>
+                      </Alert>
+                    )}
+                   </div>
+                   <div className="d-flex flex-column align-items-end gap-2">
+                    <Button 
+                      variant={saveSuccess ? "success" : editingId ? "info" : "primary"} 
+                      onClick={handleSaveToDb} 
+                      disabled={isSaving}
+                      className="d-flex align-items-center gap-2"
+                    >
+                      {isSaving ? <Spinner animation="border" size="sm" /> : saveSuccess ? <CheckCircle2 size={18} /> : editingId ? <Save size={18} /> : <Plus size={18} />}
+                      {isSaving ? 'Menyimpan...' : saveSuccess ? 'Berhasil' : editingId ? 'Update Data History' : 'Simpan ke History'}
+                    </Button>
+                    {saveError && (
+                      <div className="text-danger small fw-bold" style={{ maxWidth: '200px', textAlign: 'right' }}>
+                        Error: {saveError}
+                      </div>
+                    )}
+                   </div>
                 </div>
             <Card className="mb-4 border-primary border-2">
               <Card.Header className="bg-primary text-white d-flex align-items-center gap-2">
@@ -778,8 +801,8 @@ export default function Home() {
                               <td>{item.penerima_name}</td>
                               <td className="small">{new Date(item.created_at).toLocaleString('id-ID')}</td>
                               <td className="text-center">
-                                <Button variant="primary" size="sm" onClick={() => loadFromHistory(item)}>
-                                  Buka di Editor
+                                <Button variant="outline-primary" size="sm" onClick={() => loadFromHistory(item)} className="fw-bold">
+                                  Edit & Buka
                                 </Button>
                               </td>
                             </tr>
