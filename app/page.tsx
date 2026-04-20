@@ -768,7 +768,7 @@ export default function Home() {
                     </tbody>
                   </table>
 
-                  <div className="mt-5 pt-4 d-flex flex-column align-items-end">
+                  <div className="mt-4 d-flex flex-column align-items-end">
                     <div className="text-center" style={{ minWidth: '250px' }}>
                       <p className="mb-1">Jakarta, {formatDateIndo(data.tanggalDokumen)}</p>
                       <p className="fw-bold mb-0">{data.penandatangan}</p>
@@ -844,7 +844,7 @@ export default function Home() {
 
       <footer className="mt-5 py-4 border-top text-center no-print text-muted small">
         <Container>
-           &copy; {new Date().getFullYear()} Nota Pembatalan Generator &bull; Built with Next.js & Bootstrap
+           &copy; {new Date().getFullYear()} Nota Pembatalan Generator &bull; IT PT PGAS Solution
         </Container>
       </footer>
     </div>
