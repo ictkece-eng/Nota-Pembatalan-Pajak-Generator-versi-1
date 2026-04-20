@@ -1,0 +1,111 @@
+/* Reset and Custom Styles for Bootstrap Version */
+
+body {
+    background-color: #f4f7f6;
+    color: #333;
+}
+
+/* Document Preview Styles - Critical for the Nota Pembatalan Layout */
+.document-container {
+    background: white;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    border: 1px solid #dee2e6;
+    padding: 1.2cm;
+    min-height: 29.7cm;
+    width: 21cm; /* A4 width */
+    max-width: 100%;
+    margin: 0 auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11pt;
+    line-height: 1.4;
+    color: black;
+    position: relative;
+}
+
+.document-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid black;
+    font-size: 10pt;
+}
+
+.document-table td, .document-table th {
+    border: 1px solid black;
+    padding: 6px 8px;
+}
+
+.npwp-container {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.npwp-group {
+    display: flex;
+}
+
+.npwp-digit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 25px;
+    border: 1px solid black;
+    border-right: none;
+    font-size: 10pt;
+    font-weight: bold;
+}
+
+.npwp-digit:last-child {
+    border-right: 1px solid black;
+}
+
+@media print {
+    @page {
+        size: A4;
+        margin: 0;
+    }
+    
+    body {
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: hidden; /* Prevent extra pages */
+    }
+    
+    .no-print, .btn, .navbar, .card-header .btn {
+        display: none !important;
+    }
+    
+    .document-container {
+        box-shadow: none !important;
+        border: none !important;
+        padding: 1cm !important; /* Slightly more compact margins for print */
+        margin: 0 !important;
+        width: 210mm !important;
+        height: 297mm !important; /* Fixed A4 height */
+        min-height: 297mm !important;
+        max-height: 297mm !important;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .document-table {
+        table-layout: fixed;
+    }
+    
+    main {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+
+/* Tooltip/Helper */
+.tips-section {
+    background-color: #e9ecef;
+    border-left: 4px solid #0d6efd;
+    padding: 1rem;
+    margin-top: 1.5rem;
+    border-radius: 0.25rem;
+}
