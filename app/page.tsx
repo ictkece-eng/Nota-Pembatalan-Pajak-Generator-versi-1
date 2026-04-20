@@ -10,10 +10,13 @@ import {
   Upload, 
   Loader2, 
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  History,
+  Save,
+  CheckCircle2
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
-import { Container, Row, Col, Card, Form, Button, InputGroup, Alert, Spinner, Table } from 'react-bootstrap';
+import { Container, Row, Col, Card, Form, Button, InputGroup, Alert, Spinner, Table, Tabs, Tab, Modal } from 'react-bootstrap';
 
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY as string });
@@ -117,8 +120,79 @@ export default function Home() {
   const [data, setData] = useState<NotaData>(initialData);
   const [isExtracting, setIsExtracting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('generator');
+  const [history, setHistory] = useState<any[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const notaRef = useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (activeTab === 'history') {
+      fetchHistory();
+    }
+  }, [activeTab]);
+
+  const fetchHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const res = await fetch('/api/nota');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setHistory(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch history:", err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleSaveToDb = async () => {
+    setIsSaving(true);
+    setSaveSuccess(false);
+    try {
+      const res = await fetch('/api/nota', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+        fetchHistory();
+      }
+    } catch (err) {
+      console.error("Failed to save:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const loadFromHistory = (item: any) => {
+    const formattedItem: NotaData = {
+      nomor: item.nomor,
+      fakturNomor: item.faktur_nomor,
+      fakturTanggal: item.faktur_tanggal ? new Date(item.faktur_tanggal).toISOString().split('T')[0] : '',
+      penerima: {
+        name: item.penerima_name,
+        address: item.penerima_address,
+        npwp: item.penerima_npwp
+      },
+      pemberi: {
+        name: item.pemberi_name,
+        address: item.pemberi_address,
+        npwp: item.pemberi_npwp
+      },
+      items: typeof item.items === 'string' ? JSON.parse(item.items) : item.items,
+      tanggalDokumen: item.tanggal_dokumen ? new Date(item.tanggal_dokumen).toISOString().split('T')[0] : '',
+      penandatangan: item.penandatangan
+    };
+    setData(formattedItem);
+    setActiveTab('generator');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const totalAmount = useMemo(() => {
     return data.items.reduce((sum, item) => sum + item.amount, 0);
@@ -293,22 +367,54 @@ export default function Home() {
             <FileText size={24} />
             Nota Pembatalan Pajak Generator
           </span>
-          <div className="ms-auto d-flex gap-2">
-            <Button variant="light" size="sm" onClick={() => setData(initialData)}>Reset</Button>
-            <Button variant="info" onClick={handleDownloadPDF} className="fw-bold d-flex align-items-center gap-2 text-white">
-              <Download size={18} /> Download PDF (A4)
+          <div className="ms-auto d-flex gap-2 align-items-center">
+            <Button 
+              variant="outline-light" 
+              size="sm" 
+              onClick={() => setActiveTab(activeTab === 'generator' ? 'history' : 'generator')}
+              className="d-flex align-items-center gap-2"
+            >
+              {activeTab === 'generator' ? <History size={16} /> : <FileText size={16} />}
+              {activeTab === 'generator' ? 'History' : 'Kembali Ke Generator'}
             </Button>
-            <Button variant="warning" onClick={handlePrint} className="fw-bold d-flex align-items-center gap-2">
-              <Printer size={18} /> Cetak Nota
-            </Button>
+            {activeTab === 'generator' && (
+              <>
+                <Button variant="light" size="sm" onClick={() => setData(initialData)}>Reset</Button>
+                <Button variant="info" onClick={handleDownloadPDF} className="fw-bold d-flex align-items-center gap-2 text-white">
+                  <Download size={18} /> Download PDF (A4)
+                </Button>
+                <Button variant="warning" onClick={handlePrint} className="fw-bold d-flex align-items-center gap-2">
+                  <Printer size={18} /> Cetak Nota
+                </Button>
+              </>
+            )}
           </div>
         </Container>
       </nav>
 
       <Container fluid="lg">
-        <Row className="g-4">
-          {/* Form Side */}
-          <Col xl={6} className="no-print">
+        <Tabs
+          activeKey={activeTab}
+          onSelect={(k) => setActiveTab(k || 'generator')}
+          className="mb-4 no-print custom-tabs"
+          fill
+        >
+          <Tab eventKey="generator" title="Input & Preview">
+            <Row className="g-4">
+              {/* Form Side */}
+              <Col xl={6} className="no-print">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                   <h5 className="mb-0 fw-bold">Editor Nota</h5>
+                   <Button 
+                    variant={saveSuccess ? "success" : "primary"} 
+                    onClick={handleSaveToDb} 
+                    disabled={isSaving}
+                    className="d-flex align-items-center gap-2"
+                  >
+                    {isSaving ? <Spinner animation="border" size="sm" /> : saveSuccess ? <CheckCircle2 size={18} /> : <Save size={18} />}
+                    {isSaving ? 'Menyimpan...' : saveSuccess ? 'Berhasil Disimpan' : 'Simpan ke History'}
+                  </Button>
+                </div>
             <Card className="mb-4 border-primary border-2">
               <Card.Header className="bg-primary text-white d-flex align-items-center gap-2">
                 <Upload size={20} />
@@ -512,124 +618,180 @@ export default function Home() {
             </div>
           </Col>
 
-          {/* Preview Side */}
-          <Col xl={6} className="d-flex justify-content-center">
-            <div className="document-container" ref={notaRef}>
-              <div className="text-center mb-4">
-                <h3 className="text-uppercase fw-bold text-decoration-underline mb-1">Nota Pembatalan</h3>
-                <p className="mb-0">Nomor : {data.nomor}</p>
-              </div>
+              <Col xl={6} className="d-flex justify-content-center">
+                <div className="document-container" ref={notaRef}>
+                  <div className="text-center mb-4">
+                    <h3 className="text-uppercase fw-bold text-decoration-underline mb-1">Nota Pembatalan</h3>
+                    <p className="mb-0">Nomor : {data.nomor}</p>
+                  </div>
 
-              <table className="document-table mb-0">
-                <tbody>
-                  <tr>
-                    <td style={{ width: '65%' }}>
-                      <div className="d-flex align-items-start">
-                        <div style={{ width: '190px', flexShrink: 0 }}>Atas Faktur Pajak Nomor</div>
-                        <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
-                        <div className="fw-bold">{data.fakturNomor}</div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="d-flex align-items-start">
-                        <div style={{ width: '75px', flexShrink: 0 }}>Tanggal</div>
-                        <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
-                        <div className="text-nowrap">{formatDateIndo(data.fakturTanggal)}</div>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colSpan={2} className="text-center fw-bold bg-light uppercase">Penerima Jasa Kena Pajak</td>
-                  </tr>
-                  <tr>
-                    <td colSpan={2} className="p-0 border-0">
-                      <div className="p-3">
-                        <div className="d-flex mb-2 align-items-start">
-                          <div style={{ width: '100px', flexShrink: 0 }}>Nama</div>
-                          <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
-                          <div className="fw-bold text-uppercase">{data.penerima.name}</div>
-                        </div>
-                        <div className="d-flex mb-2 align-items-start">
-                          <div style={{ width: '100px', flexShrink: 0 }}>Alamat</div>
-                          <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
-                          <div className="text-uppercase">{data.penerima.address}</div>
-                        </div>
-                        <div className="d-flex align-items-center">
-                          <div style={{ width: '100px', flexShrink: 0 }}>NPWP</div>
-                          <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
-                          {renderNPWP(data.penerima.npwp)}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colSpan={2} className="text-center fw-bold bg-light uppercase">Kepada Pemberi Jasa Kena Pajak</td>
-                  </tr>
-                  <tr>
-                    <td colSpan={2} className="p-0 border-0">
-                      <div className="p-3">
-                        <div className="d-flex mb-2 align-items-start">
-                          <div style={{ width: '100px', flexShrink: 0 }}>Nama</div>
-                          <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
-                          <div className="fw-bold text-uppercase">{data.pemberi.name}</div>
-                        </div>
-                        <div className="d-flex mb-2 align-items-start">
-                          <div style={{ width: '100px', flexShrink: 0 }}>Alamat</div>
-                          <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
-                          <div className="text-uppercase">{data.pemberi.address}</div>
-                        </div>
-                        <div className="d-flex align-items-center">
-                          <div style={{ width: '100px', flexShrink: 0 }}>NPWP</div>
-                          <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
-                          {renderNPWP(data.pemberi.npwp)}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                  <table className="document-table mb-0">
+                    <tbody>
+                      <tr>
+                        <td style={{ width: '65%' }}>
+                          <div className="d-flex align-items-start">
+                            <div style={{ width: '190px', flexShrink: 0 }}>Atas Faktur Pajak Nomor</div>
+                            <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
+                            <div className="fw-bold">{data.fakturNomor}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="d-flex align-items-start">
+                            <div style={{ width: '75px', flexShrink: 0 }}>Tanggal</div>
+                            <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
+                            <div className="text-nowrap">{formatDateIndo(data.fakturTanggal)}</div>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colSpan={2} className="text-center fw-bold bg-light uppercase">Penerima Jasa Kena Pajak</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={2} className="p-0 border-0">
+                          <div className="p-3">
+                            <div className="d-flex mb-2 align-items-start">
+                              <div style={{ width: '100px', flexShrink: 0 }}>Nama</div>
+                              <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
+                              <div className="fw-bold text-uppercase">{data.penerima.name}</div>
+                            </div>
+                            <div className="d-flex mb-2 align-items-start">
+                              <div style={{ width: '100px', flexShrink: 0 }}>Alamat</div>
+                              <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
+                              <div className="text-uppercase">{data.penerima.address}</div>
+                            </div>
+                            <div className="d-flex align-items-center">
+                              <div style={{ width: '100px', flexShrink: 0 }}>NPWP</div>
+                              <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
+                              {renderNPWP(data.penerima.npwp)}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colSpan={2} className="text-center fw-bold bg-light uppercase">Kepada Pemberi Jasa Kena Pajak</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={2} className="p-0 border-0">
+                          <div className="p-3">
+                            <div className="d-flex mb-2 align-items-start">
+                              <div style={{ width: '100px', flexShrink: 0 }}>Nama</div>
+                              <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
+                              <div className="fw-bold text-uppercase">{data.pemberi.name}</div>
+                            </div>
+                            <div className="d-flex mb-2 align-items-start">
+                              <div style={{ width: '100px', flexShrink: 0 }}>Alamat</div>
+                              <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
+                              <div className="text-uppercase">{data.pemberi.address}</div>
+                            </div>
+                            <div className="d-flex align-items-center">
+                              <div style={{ width: '100px', flexShrink: 0 }}>NPWP</div>
+                              <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
+                              {renderNPWP(data.pemberi.npwp)}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-              <table className="document-table border-top-0">
-                <thead>
-                  <tr className="text-center fw-bold">
-                    <th style={{ width: '50px' }}>No. Urut</th>
-                    <th>Jasa Kena Pajak yang dibatalkan</th>
-                    <th style={{ width: '130px' }}>Penggantian JKP (Rp)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((item, idx) => (
-                    <tr key={item.id}>
-                      <td className="text-center align-top">{idx + 1}</td>
-                      <td className="align-top">
-                        <div style={{ minHeight: '100px', whiteSpace: 'pre-wrap' }}>
-                          {item.description}
-                        </div>
-                      </td>
-                      <td className="text-end align-top">{formatCurrency(item.amount)}</td>
-                    </tr>
-                  ))}
-                  <tr className="fw-bold">
-                    <td colSpan={2} className="text-end">Jumlah Penggantian JKP yang dibatalkan</td>
-                    <td className="text-end">{formatCurrency(totalAmount)}</td>
-                  </tr>
-                  <tr className="fw-bold">
-                    <td colSpan={2} className="text-end">PPN yang diminta kembali</td>
-                    <td className="text-end">{formatCurrency(ppnAmount)}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  <table className="document-table border-top-0">
+                    <thead>
+                      <tr className="text-center fw-bold">
+                        <th style={{ width: '50px' }}>No. Urut</th>
+                        <th>Jasa Kena Pajak yang dibatalkan</th>
+                        <th style={{ width: '130px' }}>Penggantian JKP (Rp)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.items.map((item, idx) => (
+                        <tr key={item.id}>
+                          <td className="text-center align-top">{idx + 1}</td>
+                          <td className="align-top">
+                            <div style={{ minHeight: '100px', whiteSpace: 'pre-wrap' }}>
+                              {item.description}
+                            </div>
+                          </td>
+                          <td className="text-end align-top">{formatCurrency(item.amount)}</td>
+                        </tr>
+                      ))}
+                      <tr className="fw-bold">
+                        <td colSpan={2} className="text-end">Jumlah Penggantian JKP yang dibatalkan</td>
+                        <td className="text-end">{formatCurrency(totalAmount)}</td>
+                      </tr>
+                      <tr className="fw-bold">
+                        <td colSpan={2} className="text-end">PPN yang diminta kembali</td>
+                        <td className="text-end">{formatCurrency(ppnAmount)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-              <div className="mt-5 pt-4 d-flex flex-column align-items-end">
-                <div className="text-center" style={{ minWidth: '250px' }}>
-                  <p className="mb-1">Jakarta, {formatDateIndo(data.tanggalDokumen)}</p>
-                  <p className="fw-bold mb-0">{data.penandatangan}</p>
-                  <div style={{ height: '70px' }}></div>
+                  <div className="mt-5 pt-4 d-flex flex-column align-items-end">
+                    <div className="text-center" style={{ minWidth: '250px' }}>
+                      <p className="mb-1">Jakarta, {formatDateIndo(data.tanggalDokumen)}</p>
+                      <p className="fw-bold mb-0">{data.penandatangan}</p>
+                      <div style={{ height: '70px' }}></div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </Col>
-        </Row>
+              </Col>
+            </Row>
+          </Tab>
+          <Tab eventKey="history" title="History Data">
+             <Card className="shadow-sm">
+                <Card.Header className="bg-dark text-white d-flex justify-content-between align-items-center">
+                  <h5 className="mb-0">History Nota Pembatalan</h5>
+                  <Button variant="outline-light" size="sm" onClick={fetchHistory} disabled={isLoadingHistory}>
+                    {isLoadingHistory ? <Spinner animation="border" size="sm" /> : 'Refresh'}
+                  </Button>
+                </Card.Header>
+                <Card.Body>
+                  {isLoadingHistory && history.length === 0 ? (
+                    <div className="text-center py-5">
+                      <Spinner animation="border" variant="primary" />
+                      <p className="mt-2">Memuat data...</p>
+                    </div>
+                  ) : history.length === 0 ? (
+                    <div className="text-center py-5">
+                      <History size={48} className="text-muted mb-3" />
+                      <p className="text-muted">Belum ada history data.</p>
+                    </div>
+                  ) : (
+                    <div className="table-responsive">
+                      <Table hover className="align-middle">
+                        <thead className="bg-light">
+                          <tr>
+                            <th>Nomor Nota</th>
+                            <th>Faktur Pajak</th>
+                            <th>Penerima</th>
+                            <th>Tanggal Buat</th>
+                            <th className="text-center">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history.map((item) => (
+                            <tr key={item.id}>
+                              <td className="fw-bold text-primary">{item.nomor}</td>
+                              <td>
+                                <div className="small font-monospace">{item.faktur_nomor}</div>
+                                <div className="small text-muted">{formatDateIndo(item.faktur_tanggal)}</div>
+                              </td>
+                              <td>{item.penerima_name}</td>
+                              <td className="small">{new Date(item.created_at).toLocaleString('id-ID')}</td>
+                              <td className="text-center">
+                                <Button variant="primary" size="sm" onClick={() => loadFromHistory(item)}>
+                                  Buka di Editor
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    </div>
+                  )}
+                </Card.Body>
+             </Card>
+          </Tab>
+        </Tabs>
       </Container>
 
       <footer className="mt-5 py-4 border-top text-center no-print text-muted small">
