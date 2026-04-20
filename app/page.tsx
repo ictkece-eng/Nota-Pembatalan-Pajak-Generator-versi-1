@@ -12,15 +12,11 @@ import {
   AlertCircle,
   ArrowRight
 } from 'lucide-react';
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Container, Row, Col, Card, Form, Button, InputGroup, Alert, Spinner, Table } from 'react-bootstrap';
 
-// Initialize Gemini lazily to avoid crashes if key is missing
-const getAi = () => {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenerativeAI(apiKey);
-};
+// Initialize Gemini
+const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY as string });
 
 // Types
 interface TaxItem {
@@ -160,96 +156,92 @@ export default function Home() {
     setUploadError(null);
 
     try {
-      const aiClient = getAi();
-      if (!aiClient) {
-        throw new Error("API Key Gemini belum diatur di Vercel. Silakan tambahkan NEXT_PUBLIC_GEMINI_API_KEY di Environment Variables.");
-      }
-      
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = () => reject(new Error("Gagal membaca file gambar."));
-        reader.readAsDataURL(file);
-      });
-      
-      try {
-        const model = aiClient.getGenerativeModel({ 
-          model: "gemini-1.5-flash", 
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: SchemaType.OBJECT,
-              properties: {
-                nomorNota: { type: SchemaType.STRING },
-                fakturNomor: { type: SchemaType.STRING },
-                fakturTanggal: { type: SchemaType.STRING },
-                penerimaName: { type: SchemaType.STRING },
-                penerimaAddress: { type: SchemaType.STRING },
-                penerimaNpwp: { type: SchemaType.STRING },
-                pemberiName: { type: SchemaType.STRING },
-                pemberiAddress: { type: SchemaType.STRING },
-                pemberiNpwp: { type: SchemaType.STRING },
-                tanggalNota: { type: SchemaType.STRING },
-                items: {
-                  type: SchemaType.ARRAY,
-                  items: {
-                    type: SchemaType.OBJECT,
-                    properties: {
-                      description: { type: SchemaType.STRING },
-                      amount: { type: SchemaType.NUMBER }
-                    },
-                    required: ["description", "amount"]
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = (reader.result as string).split(',')[1];
+        
+        try {
+          const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: {
+              parts: [
+                {
+                  text: "Anda adalah pakar pajak Indonesia. Ekstrak data dari gambar Faktur Pajak ini dan kembalikan dalam format JSON murni. Pastikan NPWP adalah deretan angka (15 digit). Item harus berisi deskripsi lengkap dan nominal angka tanpa tanda pemisah di JSON."
+                },
+                {
+                  inlineData: {
+                    data: base64Data,
+                    mimeType: file.type
                   }
                 }
-              },
-              required: ["fakturNomor", "fakturTanggal", "penerimaName", "penerimaNpwp", "items"]
+              ]
+            },
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  nomorNota: { type: Type.STRING },
+                  fakturNomor: { type: Type.STRING },
+                  fakturTanggal: { type: Type.STRING },
+                  penerimaName: { type: Type.STRING },
+                  penerimaAddress: { type: Type.STRING },
+                  penerimaNpwp: { type: Type.STRING },
+                  pemberiName: { type: Type.STRING },
+                  pemberiAddress: { type: Type.STRING },
+                  pemberiNpwp: { type: Type.STRING },
+                  items: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        description: { type: Type.STRING },
+                        amount: { type: Type.NUMBER }
+                      },
+                      required: ["description", "amount"]
+                    }
+                  }
+                },
+                required: ["fakturNomor", "fakturTanggal", "penerimaName", "penerimaNpwp", "items"]
+              }
             }
-          }
-        });
+          });
 
-        const result = await model.generateContent([
-          "Anda adalah pakar pajak Indonesia. Ekstrak data dari gambar Faktur Pajak ini dan kembalikan dalam format JSON murni. Pastikan NPWP adalah deretan angka (15 digit). Item harus berisi deskripsi lengkap dan nominal angka tanpa tanda pemisah di JSON.",
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: file.type
-            }
-          }
-        ]);
+          const extracted: any = JSON.parse(response.text);
+          
+          setData(prev => ({
+            ...prev,
+            nomor: extracted.nomorNota || prev.nomor,
+            fakturNomor: extracted.fakturNomor || prev.fakturNomor,
+            fakturTanggal: extracted.fakturTanggal || prev.fakturTanggal,
+            penerima: {
+              name: extracted.penerimaName || prev.penerima.name,
+              address: extracted.penerimaAddress || prev.penerima.address,
+              npwp: (extracted.penerimaNpwp || '').replace(/\D/g, '').slice(0, 15)
+            },
+            pemberi: {
+              name: extracted.pemberiName || prev.pemberi.name,
+              address: extracted.pemberiAddress || prev.pemberi.address,
+              npwp: (extracted.pemberiNpwp || '').replace(/\D/g, '').slice(0, 15)
+            },
+            items: extracted.items.map((it: any) => ({
+              id: Math.random().toString(36).substr(2, 9),
+              description: it.description,
+              amount: it.amount
+            }))
+          }));
 
-        const text = result.response.text();
-        const extracted: any = JSON.parse(text);
-        
-        setData(prev => ({
-          ...prev,
-          nomor: extracted.nomorNota || prev.nomor,
-          fakturNomor: extracted.fakturNomor || prev.fakturNomor,
-          fakturTanggal: extracted.fakturTanggal || prev.fakturTanggal,
-          penerima: {
-            name: extracted.penerimaName || prev.penerima.name,
-            address: extracted.penerimaAddress || prev.penerima.address,
-            npwp: (extracted.penerimaNpwp || '').replace(/\D/g, '').slice(0, 15)
-          },
-          pemberi: {
-            name: extracted.pemberiName || prev.pemberi.name,
-            address: extracted.pemberiAddress || prev.pemberi.address,
-            npwp: (extracted.pemberiNpwp || '').replace(/\D/g, '').slice(0, 15)
-          },
-          items: extracted.items ? extracted.items.map((it: any) => ({
-            id: Math.random().toString(36).substr(2, 9),
-            description: it.description,
-            amount: it.amount
-          })) : prev.items
-        }));
-
-      } catch (err: any) {
-        console.error("Gemini Error:", err);
-        throw new Error("Gagal menganalisis dokumen. Pastikan gambar faktur jelas.");
-      }
-    } catch (err: any) {
-      setUploadError(err.message || "Terjadi kesalahan saat mengunggah file.");
-    } finally {
+        } catch (err: any) {
+          console.error("Gemini Error:", err);
+          setUploadError("Gagal menganalisis dokumen. Gunakan gambar faktur yang jelas.");
+        } finally {
+          setIsExtracting(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
       setIsExtracting(false);
+      setUploadError("Gagal membaca file.");
     }
   };
 
@@ -628,7 +620,7 @@ export default function Home() {
                 </tbody>
               </table>
 
-              <div className="mt-auto pt-4 d-flex flex-column align-items-end">
+              <div className="mt-5 pt-4 d-flex flex-column align-items-end">
                 <div className="text-center" style={{ minWidth: '250px' }}>
                   <p className="mb-1">Jakarta, {formatDateIndo(data.tanggalDokumen)}</p>
                   <p className="fw-bold mb-0">{data.penandatangan}</p>
