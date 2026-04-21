@@ -170,15 +170,15 @@ export default function Home() {
   
   const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
   
-  // Shared TOTP Secret for the Billing Team
-  const TOTP_SECRET = process.env.NEXT_PUBLIC_TOTP_SECRET || 'PGASBILLING2026SECRETKEY';
+  // Shared TOTP Secret for the Billing Team (Must be Base32 for Google Authenticator)
+  const TOTP_SECRET = process.env.NEXT_PUBLIC_TOTP_SECRET || 'KVKX2Z33K5SQ6GRY';
   const appName = 'PGAS Nota Generator';
   const userName = 'Billing Team';
   const qrValue = speakeasy.otpauthURL({
     secret: TOTP_SECRET,
     label: userName,
     issuer: appName,
-    encoding: 'ascii'
+    encoding: 'base32'
   });
 
   const notaRef = useRef<HTMLDivElement>(null);
@@ -255,9 +255,9 @@ export default function Home() {
     try {
       const isValid = speakeasy.totp.verify({
         secret: TOTP_SECRET,
-        encoding: 'ascii',
+        encoding: 'base32',
         token: totpCode,
-        window: 1 // Allow 30s before/after
+        window: 2 // Allow 60s before/after for time drift
       });
       
       if (isValid) {
@@ -636,25 +636,39 @@ export default function Home() {
                   ) : (
                     <div>
                       <div className="mb-4 text-center">
-                        <p className="small text-muted mb-3">Buka aplikasi <strong>Google Authenticator</strong> di HP Anda dan masukkan kode 6 digit.</p>
+                        <div className="d-flex justify-content-center mb-3">
+                          <Badge bg="info" className="p-2 px-3 rounded-pill bg-opacity-10 text-info border border-info border-opacity-25">
+                            <Smartphone size={14} className="me-1" /> Scan barcode cukup 1x saja saat setup
+                          </Badge>
+                        </div>
+                        <p className="small text-muted mb-3">Masukkan 6 digit kode dari aplikasi <strong>Google Authenticator</strong> yang sudah terdaftar di HP Anda.</p>
+                        
+                        {totpError && (
+                          <Alert variant="danger" className="small py-2 border-0 mb-3 shake-animation">
+                            Kode tidak valid! Pastikan jam di HP Anda sudah sinkron (Otomatis).
+                          </Alert>
+                        )}
                         
                         <Button 
                           variant="link" 
                           size="sm" 
-                          className="text-decoration-none text-primary fw-bold p-0 mb-3"
+                          className="text-decoration-none text-primary fw-bold p-0 mb-3 small"
+                          style={{ fontSize: '12px' }}
                           onClick={() => setShowQR(!showQR)}
                         >
-                          {showQR ? 'Sembunyikan QR Code' : 'Lihat QR Code Setup'}
+                          {showQR ? 'Sembunyikan Instruksi Setup' : 'Bantuan / Setup Awal (Scan QR)'}
                         </Button>
                         
                         {showQR && (
                           <motion.div 
                             initial={{ opacity: 0, y: -10 }} 
                             animate={{ opacity: 1, y: 0 }}
-                            className="bg-white p-3 rounded border shadow-sm mb-3 d-inline-block mx-auto"
+                            className="bg-white p-3 rounded border shadow-sm mb-3 d-inline-block mx-auto text-center"
                           >
-                            <QRCodeCanvas value={qrValue} size={160} level="H" />
-                            <div className="mt-2 text-center" style={{fontSize: '11px'}}>
+                            <div className="small fw-bold mb-2">Setup Sekali Saja:</div>
+                            <QRCodeCanvas value={qrValue} size={140} level="H" />
+                            <div className="mt-2" style={{fontSize: '10px'}}>
+                              <p className="mb-1 text-muted">Scan menggunakan Google Authenticator</p>
                               <code className="text-dark bg-light px-2 py-1 rounded">{TOTP_SECRET}</code>
                             </div>
                           </motion.div>
@@ -673,11 +687,10 @@ export default function Home() {
                               const val = e.target.value.replace(/\D/g, '').slice(0, 6);
                               setTotpCode(val);
                             }}
-                            className={`text-center fw-bold fs-3 border-2 py-3 shadow-sm transition-all ${totpError ? 'shake-animation border-danger' : 'border-primary'}`}
+                            className={`text-center fw-bold fs-3 border-2 py-3 shadow-sm transition-all ${totpError ? 'border-danger' : 'border-primary'}`}
                             style={{ letterSpacing: '8px' }}
                             autoFocus
                           />
-                          {totpError && <div className="text-danger small mt-2 fw-bold">Kode tidak valid atau sudah kadaluarsa!</div>}
                         </Form.Group>
 
                         <Button 
