@@ -11,7 +11,6 @@ import {
   Loader2, 
   AlertCircle,
   ArrowRight,
-  ArrowLeft,
   History,
   Save,
   CheckCircle2,
@@ -34,8 +33,6 @@ import {
 import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from "motion/react";
 import { Container, Row, Col, Card, Form, Button, InputGroup, Alert, Spinner, Table, Tabs, Tab, Modal, Badge } from 'react-bootstrap';
-import * as speakeasy from 'speakeasy';
-import { QRCodeCanvas } from 'qrcode.react';
 
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY as string });
@@ -163,33 +160,20 @@ export default function Home() {
   const [loginError, setLoginError] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isIdle, setIsIdle] = useState(false);
-  const [authStep, setAuthStep] = useState(1); // 1: Password, 2: Google Authenticator (TOTP)
-  const [totpCode, setTotpCode] = useState('');
-  const [totpError, setTotpError] = useState(false);
-  const [showQR, setShowQR] = useState(false);
+  const [authStep, setAuthStep] = useState(1); // 1: Password, 2: Google Auth (Mock for now)
+  const [isGoogleVerified, setIsGoogleVerified] = useState(false);
   
   const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-  
-  // Shared TOTP Secret (Base32 format: A-Z, 2-7 only)
-  const rawSecret = process.env.NEXT_PUBLIC_TOTP_SECRET || 'KVKX2Z33K5SQ6GRY';
-  // Sanitize: Google Authenticator only accepts Base32 (A-Z, 2-7). 
-  // We strip invalid characters and force uppercase to ensure compatibility.
-  const TOTP_SECRET = rawSecret.replace(/[^a-zA-Z2-7]/g, '').toUpperCase().slice(0, 32) || 'KVKX2Z33K5SQ6GRY';
-  
-  const appName = 'PGAS Nota Generator';
-  const userName = 'BillingTeam';
-  
-  // Create the URL manually to ensure 100% compatibility with all Authenticator apps
-  const qrValue = `otpauth://totp/${encodeURIComponent(appName)}:${encodeURIComponent(userName)}?secret=${TOTP_SECRET}&issuer=${encodeURIComponent(appName)}&algorithm=SHA1&digits=6&period=30`;
 
   const notaRef = useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     // Check session storage on mount
     const authStatus = sessionStorage.getItem('billing_auth');
-    const totpStatus = sessionStorage.getItem('totp_auth');
-    if (authStatus === 'true' && totpStatus === 'true') {
+    const googleStatus = sessionStorage.getItem('google_auth');
+    if (authStatus === 'true' && googleStatus === 'true') {
       setIsAuthenticated(true);
+      setIsGoogleVerified(true);
     } else if (authStatus === 'true') {
       setAuthStep(2);
     }
@@ -211,11 +195,11 @@ export default function Home() {
 
     const handleLogout = () => {
       setIsAuthenticated(false);
+      setIsGoogleVerified(false);
       setAuthStep(1);
       setPassInput('');
-      setTotpCode('');
       sessionStorage.removeItem('billing_auth');
-      sessionStorage.removeItem('totp_auth');
+      sessionStorage.removeItem('google_auth');
       setIsIdle(true);
     };
 
@@ -251,37 +235,12 @@ export default function Home() {
     }
   };
 
-  const [isVerifyingTOTP, setIsVerifyingTOTP] = useState(false);
-
-  const handleGoogleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsVerifyingTOTP(true);
-    setTotpError(false);
-    
-    try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: totpCode.trim() })
-      });
-      
-      const result = await res.json();
-      
-      if (res.ok && result.success) {
-        setIsAuthenticated(true);
-        sessionStorage.setItem('totp_auth', 'true');
-        setIsIdle(false);
-        setTotpError(false);
-      } else {
-        setTotpError(true);
-        setTimeout(() => setTotpError(false), 500);
-      }
-    } catch (err) {
-      console.error("TOTP Verification API error:", err);
-      setTotpError(true);
-    } finally {
-      setIsVerifyingTOTP(false);
-    }
+  const handleGoogleVerify = () => {
+    // Simulate Google Sign-In for now (will integrate Firebase later)
+    setIsGoogleVerified(true);
+    setIsAuthenticated(true);
+    sessionStorage.setItem('google_auth', 'true');
+    setIsIdle(false);
   };
 
   const handleRequestKey = () => {
@@ -643,112 +602,34 @@ export default function Home() {
                       </div>
                     </Form>
                   ) : (
-                    <div>
-                      <div className="mb-4 text-center">
-                        <div className="d-flex justify-content-center mb-3">
-                          <Badge bg="info" className="p-2 px-3 rounded-pill bg-opacity-10 text-info border border-info border-opacity-25">
-                            <Smartphone size={14} className="me-1" /> Scan barcode cukup 1x saja saat setup
-                          </Badge>
+                    <div className="text-center">
+                      <div className="mb-4">
+                        <p className="small text-muted">Untuk keamanan tambahan, silakan verifikasi identitas Anda menggunakan akun Google PGAS.</p>
+                      </div>
+                      
+                      <Button 
+                        variant="white" 
+                        onClick={handleGoogleVerify}
+                        className="w-100 py-3 border-2 border-primary text-dark fw-bold shadow-sm d-flex align-items-center justify-content-center gap-3 transition-all hover-bg-light"
+                      >
+                        <div className="bg-primary p-2 rounded-circle text-white">
+                          <ShieldCheck size={20} />
                         </div>
-                        <p className="small text-muted mb-3">Masukkan 6 digit kode dari aplikasi <strong>Google Authenticator</strong> yang sudah terdaftar di HP Anda.</p>
-                        
-                        {totpError && (
-                          <Alert variant="danger" className="small py-2 border-0 mb-3 shake-animation shadow-sm">
-                            <div className="fw-bold mb-1">Kode tidak valid atau Kadaluarsa!</div>
-                            <div className="opacity-75" style={{ fontSize: '11px' }}>
-                               Sistem TOTP sangat bergantung pada ketepatan waktu. <br/>
-                               <strong>Pastikan Jam di HP Anda:</strong> <br/>
-                               1. Masuk ke Settings HP &gt; Date &amp; Time <br/>
-                               2. Aktifkan <strong>&quot;Set Automatically&quot;</strong> <br/>
-                               3. Di Google Authenticator: Settings &gt; Time correction for codes &gt; <strong>Sync now</strong>
-                            </div>
-                          </Alert>
-                        )}
-                        
-                        <Button 
-                          variant="link" 
-                          size="sm" 
-                          className="text-decoration-none text-primary fw-bold p-0 mb-3 small"
-                          style={{ fontSize: '12px' }}
-                          onClick={() => setShowQR(!showQR)}
-                        >
-                          {showQR ? 'Sembunyikan Instruksi Setup' : 'Bantuan / Setup Awal (Scan QR)'}
-                        </Button>
-                        
-                        {showQR && (
-                          <motion.div 
-                            initial={{ opacity: 0, y: -10 }} 
-                            animate={{ opacity: 1, y: 0 }}
-                            className="bg-white p-3 rounded border shadow-sm mb-3 d-inline-block mx-auto text-center"
-                          >
-                            <div className="small fw-bold mb-2 text-primary">Setup Sekali Saja:</div>
-                            <div className="bg-white p-2 rounded border mb-2 d-inline-block">
-                              <QRCodeCanvas value={qrValue} size={180} level="H" includeMargin={true} />
-                            </div>
-                            <div className="mt-2" style={{fontSize: '11px'}}>
-                              <p className="mb-1 text-muted">Scan QR di atas, atau masukkan kunci ini secara manual di aplikasi:</p>
-                              <div className="d-flex align-items-center justify-content-center gap-2">
-                                <code className="text-dark bg-secondary bg-opacity-10 px-3 py-2 rounded fw-bold fs-6">
-                                  {TOTP_SECRET}
-                                </code>
-                              </div>
-                              <p className="mt-2 mb-0 text-info fw-bold">Pilih &quot;Enter a setup key&quot; di aplikasi HP</p>
-                            </div>
-                          </motion.div>
-                        )}
-                      </div>
+                        <span>Masuk dengan Google</span>
+                      </Button>
                       
-                      <Form onSubmit={handleGoogleVerify}>
-                        <Form.Group className="mb-3 text-center">
-                          <Form.Control
-                            type="text"
-                            inputMode="numeric"
-                            autoComplete="one-time-code"
-                            placeholder="0 0 0 0 0 0"
-                            value={totpCode}
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                              setTotpCode(val);
-                            }}
-                            className={`text-center fw-bold fs-3 border-2 py-3 shadow-sm transition-all ${totpError ? 'border-danger' : 'border-primary'}`}
-                            style={{ letterSpacing: '8px' }}
-                            autoFocus
-                          />
-                        </Form.Group>
-
-                        <Button 
-                          variant="primary" 
-                          type="submit" 
-                          className="w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3"
-                          disabled={totpCode.length < 6 || isVerifyingTOTP}
-                        >
-                          {isVerifyingTOTP ? (
-                            <>
-                              <Spinner animation="border" size="sm" className="me-2" /> Memverifikasi...
-                            </>
-                          ) : (
-                            <>
-                              <ShieldCheck size={20} /> Verifikasi & Masuk
-                            </>
-                          )}
-                        </Button>
-                      </Form>
-                      
-                      <div className="text-center">
-                        <Button 
-                          variant="link" 
-                          size="sm" 
-                          className="text-muted" 
-                          onClick={() => {
-                            setAuthStep(1);
-                            setPassInput('');
-                            setTotpCode('');
-                            sessionStorage.removeItem('billing_auth');
-                          }}
-                        >
-                           <ArrowLeft size={14} /> Kembali ke Langkah 1
-                        </Button>
-                      </div>
+                      <Button 
+                        variant="link" 
+                        size="sm" 
+                        className="mt-3 text-muted" 
+                        onClick={() => {
+                          setAuthStep(1);
+                          setPassInput('');
+                          sessionStorage.removeItem('billing_auth');
+                        }}
+                      >
+                         Kembali ke Langkah 1
+                      </Button>
                     </div>
                   )}
                 </Card.Body>
