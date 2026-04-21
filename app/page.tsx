@@ -257,8 +257,8 @@ export default function Home() {
       const isValid = speakeasy.totp.verify({
         secret: TOTP_SECRET,
         encoding: 'base32',
-        token: totpCode,
-        window: 2 // Allow 60s before/after for time drift
+        token: totpCode.trim(),
+        window: 6 // Allow 3 minutes before/after for time drift
       });
       
       if (isValid) {
@@ -645,8 +645,15 @@ export default function Home() {
                         <p className="small text-muted mb-3">Masukkan 6 digit kode dari aplikasi <strong>Google Authenticator</strong> yang sudah terdaftar di HP Anda.</p>
                         
                         {totpError && (
-                          <Alert variant="danger" className="small py-2 border-0 mb-3 shake-animation">
-                            Kode tidak valid! Pastikan jam di HP Anda sudah sinkron (Otomatis).
+                          <Alert variant="danger" className="small py-2 border-0 mb-3 shake-animation shadow-sm">
+                            <div className="fw-bold mb-1">Kode tidak valid atau Kadaluarsa!</div>
+                            <div className="opacity-75" style={{ fontSize: '11px' }}>
+                               Sistem TOTP sangat bergantung pada ketepatan waktu. <br/>
+                               <strong>Pastikan Jam di HP Anda:</strong> <br/>
+                               1. Masuk ke Settings HP &gt; Date &amp; Time <br/>
+                               2. Aktifkan <strong>&quot;Set Automatically&quot;</strong> <br/>
+                               3. Di Google Authenticator: Settings &gt; Time correction for codes &gt; <strong>Sync now</strong>
+                            </div>
                           </Alert>
                         )}
                         
