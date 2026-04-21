@@ -13,10 +13,12 @@ import {
   ArrowRight,
   History,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  FileCheck2
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
-import { Container, Row, Col, Card, Form, Button, InputGroup, Alert, Spinner, Table, Tabs, Tab, Modal } from 'react-bootstrap';
+import { motion, AnimatePresence } from "motion/react";
+import { Container, Row, Col, Card, Form, Button, InputGroup, Alert, Spinner, Table, Tabs, Tab, Modal, Badge } from 'react-bootstrap';
 
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY as string });
@@ -125,6 +127,7 @@ export default function Home() {
   const [history, setHistory] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
@@ -333,6 +336,9 @@ export default function Home() {
             }))
           }));
 
+          setUploadSuccess(true);
+          setTimeout(() => setUploadSuccess(false), 4000);
+
         } catch (err: any) {
           console.error("Gemini Error:", err);
           setUploadError("Gagal menganalisis dokumen. Gunakan gambar faktur yang jelas.");
@@ -389,32 +395,36 @@ export default function Home() {
   return (
     <div className="pb-5">
       {/* Header Navbar */}
-      <nav className="navbar navbar-expand-lg navbar-dark bg-primary mb-4 no-print shadow-sm">
+      <nav className="navbar navbar-expand-lg navbar-dark bg-dark py-3 mb-4 no-print shadow-sm border-bottom border-primary border-3">
         <Container>
-          <span className="navbar-brand d-flex align-items-center gap-2 font-weight-bold">
-            <FileText size={24} />
-            Nota Pembatalan Pajak Generator
+          <span className="navbar-brand d-flex align-items-center gap-3 font-weight-bold">
+            <div className="bg-primary p-2 rounded shadow-sm">
+              <FileText size={22} className="text-white" />
+            </div>
+            <div className="d-flex flex-column">
+              <span className="fs-5 lh-1">Generator Nota Pajak</span>
+              <span className="small opacity-50 fw-normal">PT PGAS Solution</span>
+            </div>
           </span>
-          <div className="ms-auto d-flex gap-2 align-items-center">
+          <div className="ms-auto d-flex gap-3 align-items-center">
             <Button 
-              variant="outline-light" 
+              variant={activeTab === 'history' ? "primary" : "outline-light"} 
               size="sm" 
               onClick={() => setActiveTab(activeTab === 'generator' ? 'history' : 'generator')}
-              className="d-flex align-items-center gap-2"
+              className="d-flex align-items-center gap-2 px-3 fw-bold"
             >
               {activeTab === 'generator' ? <History size={16} /> : <FileText size={16} />}
-              {activeTab === 'generator' ? 'History' : 'Kembali Ke Generator'}
+              {activeTab === 'generator' ? 'Riwayat Data' : 'Kembali Ke Generator'}
             </Button>
             {activeTab === 'generator' && (
-              <>
-                <Button variant="light" size="sm" onClick={() => { setData(initialData); setEditingId(null); }}>Reset</Button>
-                <Button variant="info" onClick={handleDownloadPDF} className="fw-bold d-flex align-items-center gap-2 text-white">
-                  <Download size={18} /> Download PDF (A4)
+              <div className="d-flex gap-2">
+                <Button variant="outline-info" size="sm" onClick={handleDownloadPDF} className="fw-bold d-flex align-items-center gap-2">
+                  <Download size={16} /> PDF
                 </Button>
-                <Button variant="warning" onClick={handlePrint} className="fw-bold d-flex align-items-center gap-2">
-                  <Printer size={18} /> Cetak Nota
+                <Button variant="warning" size="sm" onClick={handlePrint} className="fw-bold d-flex align-items-center gap-2 text-dark">
+                  <Printer size={16} /> Print
                 </Button>
-              </>
+              </div>
             )}
           </div>
         </Container>
@@ -431,59 +441,112 @@ export default function Home() {
             <Row className="g-4">
               {/* Form Side */}
               <Col xl={6} className="no-print">
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                   <div className="d-flex align-items-center gap-2">
-                    <h5 className="mb-0 fw-bold">Editor Nota</h5>
-                    {editingId && (
-                      <Alert variant="info" className="py-1 px-2 m-0 small d-flex align-items-center gap-1">
-                        Mode Edit (ID: {editingId})
-                        <Button variant="link" size="sm" className="p-0 text-decoration-none" onClick={() => setEditingId(null)}>Batal Edit</Button>
-                      </Alert>
-                    )}
-                   </div>
-                   <div className="d-flex flex-column align-items-end gap-2">
-                    <Button 
-                      variant={saveSuccess ? "success" : editingId ? "info" : "primary"} 
-                      onClick={handleSaveToDb} 
-                      disabled={isSaving}
-                      className="d-flex align-items-center gap-2"
+                <AnimatePresence>
+                  {uploadSuccess && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="mb-3"
                     >
-                      {isSaving ? <Spinner animation="border" size="sm" /> : saveSuccess ? <CheckCircle2 size={18} /> : editingId ? <Save size={18} /> : <Plus size={18} />}
-                      {isSaving ? 'Menyimpan...' : saveSuccess ? 'Berhasil' : editingId ? 'Update Data History' : 'Simpan ke History'}
-                    </Button>
-                    {saveError && (
-                      <div className="text-danger small fw-bold" style={{ maxWidth: '200px', textAlign: 'right' }}>
-                        Error: {saveError}
-                      </div>
-                    )}
-                   </div>
-                </div>
-            <Card className="mb-4 border-primary border-2">
-              <Card.Header className="bg-primary text-white d-flex align-items-center gap-2">
-                <Upload size={20} />
-                <h5 className="mb-0">Automasi Via Faktur Pajak</h5>
-              </Card.Header>
-              <Card.Body className="text-center py-4 bg-light">
-                <p className="text-muted small mb-4">
-                  Hemat waktu dengan mengunggah gambar/PDF Faktur Pajak. AI akan mengisi form secara otomatis.
-                </p>
-                <div className="d-flex flex-column align-items-center">
-                  <Form.Group controlId="formFile" className="mb-3">
-                    <Form.Control 
-                      type="file" 
-                      accept="image/*,application/pdf"
-                      onChange={handleFileUpload}
-                      disabled={isExtracting}
-                    />
-                  </Form.Group>
-                  {isExtracting && (
-                    <div className="d-flex align-items-center gap-2 text-primary">
-                      <Spinner animation="border" size="sm" />
-                      <span>Sedang menganalisis dokumen...</span>
-                    </div>
+                      <Alert variant="success" className="d-flex align-items-center gap-3 border-0 shadow-sm py-3">
+                        <div className="bg-success text-white rounded-circle p-2 d-flex align-items-center justify-content-center">
+                          <CheckCircle2 size={20} />
+                        </div>
+                        <div>
+                          <h6 className="mb-0 fw-bold">Faktur Pajak Berhasil Diunggah!</h6>
+                          <p className="mb-0 small opacity-75">Data telah diekstrak secara otomatis ke formulir di bawah.</p>
+                        </div>
+                      </Alert>
+                    </motion.div>
                   )}
+                </AnimatePresence>
+
+                <div className="d-flex flex-column mb-4">
+                  <div className="d-flex justify-content-between align-items-start border-bottom pb-3 mb-2">
+                    <div>
+                      <div className="d-flex align-items-center gap-2 mb-1">
+                        <h4 className="mb-0 fw-bold text-dark">{editingId ? 'Edit Nota Pembatalan' : 'Editor Nota'}</h4>
+                        {editingId && (
+                          <div className="bg-info-subtle text-info px-2 py-1 rounded small fw-bold border border-info-subtle">
+                            Mode Edit
+                          </div>
+                        )}
+                      </div>
+                      {editingId ? (
+                        <p className="text-primary mb-0 fw-bold font-monospace small">
+                          <FileCheck2 size={14} className="me-1" /> {data.nomor}
+                        </p>
+                      ) : (
+                        <p className="text-muted mb-0 small">Masukkan data nota secara manual atau unggah faktur pajak.</p>
+                      )}
+                    </div>
+                    
+                    <div className="d-flex flex-column align-items-end gap-2">
+                      <div className="d-flex gap-2">
+                        {editingId && (
+                          <Button 
+                            variant="outline-secondary" 
+                            size="sm" 
+                            className="fw-bold"
+                            onClick={() => { setEditingId(null); setData(initialData); }}
+                          >
+                            Batal Edit
+                          </Button>
+                        )}
+                        <Button 
+                          variant={saveSuccess ? "success" : editingId ? "info" : "primary"} 
+                          onClick={handleSaveToDb} 
+                          disabled={isSaving}
+                          className="d-flex align-items-center gap-2 shadow-sm px-3"
+                        >
+                          {isSaving ? <Spinner animation="border" size="sm" /> : saveSuccess ? <CheckCircle2 size={18} /> : editingId ? <Save size={18} /> : <Plus size={18} />}
+                          {isSaving ? 'Menyimpan...' : saveSuccess ? 'Berhasil' : editingId ? 'Update Data' : 'Simpan Data'}
+                        </Button>
+                      </div>
+                      {saveError && (
+                        <div className="text-danger small fw-bold" style={{ maxWidth: '200px', textAlign: 'right' }}>
+                          Error: {saveError}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+            <Card className="mb-4 border-0 shadow-sm overflow-hidden">
+              <div className="bg-primary p-3 d-flex align-items-center gap-2 text-white">
+                <Upload size={18} />
+                <h6 className="mb-0 fw-bold">Unggah Faktur Pajak</h6>
+              </div>
+              <Card.Body className="bg-light-subtle">
+                <div className="d-flex flex-column align-items-center">
+                  <Form.Group className="w-100">
+                    <div className="custom-file-upload border-2 border-dashed rounded p-4 text-center bg-white">
+                      <Form.Control 
+                        type="file" 
+                        accept="image/*,application/pdf"
+                        onChange={handleFileUpload}
+                        disabled={isExtracting}
+                        className="d-none"
+                        id="actual-file-input"
+                      />
+                      <label htmlFor="actual-file-input" className="cursor-pointer mb-0 w-100">
+                        {isExtracting ? (
+                          <div className="d-flex flex-column align-items-center gap-2 py-2">
+                            <Spinner animation="border" size="sm" variant="primary" />
+                            <span className="small text-primary fw-bold">Sedang Menganalisis Dokumen...</span>
+                          </div>
+                        ) : (
+                          <div className="d-flex flex-column align-items-center gap-1 py-1">
+                            <Upload className="text-primary mb-2" size={32} />
+                            <span className="fw-bold text-dark">Klik untuk Unggah Gambar</span>
+                            <span className="text-muted small">AI akan mengisi form otomatis dari Faktur Pajak Anda</span>
+                          </div>
+                        )}
+                      </label>
+                    </div>
+                  </Form.Group>
                   {uploadError && (
-                    <Alert variant="danger" className="mt-2 py-2 small d-flex align-items-center gap-2">
+                    <Alert variant="danger" className="mt-3 py-2 px-3 small d-flex align-items-center gap-2 border-0 shadow-sm w-100">
                       <AlertCircle size={16} /> {uploadError}
                     </Alert>
                   )}
@@ -813,20 +876,40 @@ export default function Home() {
                         <tbody>
                           {history.map((item) => (
                             <tr key={item.id}>
-                              <td className="fw-bold text-primary">{item.nomor}</td>
+                              <td className="fw-bold text-primary">
+                                <div className="d-flex align-items-center gap-2">
+                                  <FileText size={16} className="opacity-50" />
+                                  <span className="text-truncate" style={{maxWidth: '200px'}} title={item.nomor}>{item.nomor}</span>
+                                </div>
+                              </td>
                               <td>
-                                <div className="small font-monospace">{item.faktur_nomor}</div>
+                                <div className="small fw-bold text-dark">{item.faktur_nomor}</div>
                                 <div className="small text-muted">{formatDateIndo(item.faktur_tanggal)}</div>
                               </td>
-                              <td>{item.penerima_name}</td>
-                              <td className="small">{new Date(item.created_at).toLocaleString('id-ID')}</td>
+                              <td>
+                                <Badge bg="light" text="dark" className="border shadow-sm fw-normal px-2 py-1">
+                                  {item.penerima_name}
+                                </Badge>
+                              </td>
+                              <td className="small text-muted">{new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                               <td className="text-center">
                                 <div className="d-flex justify-content-center gap-2">
-                                  <Button variant="outline-primary" size="sm" onClick={() => loadFromHistory(item)} className="fw-bold d-flex align-items-center gap-1">
-                                    <FileText size={14} /> Edit
+                                  <Button 
+                                    variant="outline-primary" 
+                                    size="sm" 
+                                    onClick={() => loadFromHistory(item)} 
+                                    className="fw-bold d-flex align-items-center gap-1 px-3 shadow-sm border-2"
+                                  >
+                                    <Save size={14} /> Buka
                                   </Button>
-                                  <Button variant="outline-danger" size="sm" onClick={() => handleDelete(item.id)} className="d-flex align-items-center gap-1">
-                                    <Trash2 size={14} /> Hapus
+                                  <Button 
+                                    variant="outline-danger" 
+                                    size="sm" 
+                                    onClick={() => handleDelete(item.id)} 
+                                    className="d-flex align-items-center justify-content-center p-2 rounded-circle border-0 text-danger shadow-sm"
+                                    title="Hapus"
+                                  >
+                                    <Trash2 size={16} />
                                   </Button>
                                 </div>
                               </td>
