@@ -251,17 +251,23 @@ export default function Home() {
     }
   };
 
-  const handleGoogleVerify = (e: React.FormEvent) => {
+  const [isVerifyingTOTP, setIsVerifyingTOTP] = useState(false);
+
+  const handleGoogleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsVerifyingTOTP(true);
+    setTotpError(false);
+    
     try {
-      const isValid = speakeasy.totp.verify({
-        secret: TOTP_SECRET,
-        encoding: 'base32',
-        token: totpCode.trim(),
-        window: 6 // Allow 3 minutes before/after for time drift
+      const res = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: totpCode.trim() })
       });
       
-      if (isValid) {
+      const result = await res.json();
+      
+      if (res.ok && result.success) {
         setIsAuthenticated(true);
         sessionStorage.setItem('totp_auth', 'true');
         setIsIdle(false);
@@ -271,8 +277,10 @@ export default function Home() {
         setTimeout(() => setTotpError(false), 500);
       }
     } catch (err) {
-      console.error("TOTP Verification error:", err);
+      console.error("TOTP Verification API error:", err);
       setTotpError(true);
+    } finally {
+      setIsVerifyingTOTP(false);
     }
   };
 
@@ -712,9 +720,17 @@ export default function Home() {
                           variant="primary" 
                           type="submit" 
                           className="w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3"
-                          disabled={totpCode.length < 6}
+                          disabled={totpCode.length < 6 || isVerifyingTOTP}
                         >
-                          <ShieldCheck size={20} /> Verifikasi & Masuk
+                          {isVerifyingTOTP ? (
+                            <>
+                              <Spinner animation="border" size="sm" className="me-2" /> Memverifikasi...
+                            </>
+                          ) : (
+                            <>
+                              <ShieldCheck size={20} /> Verifikasi & Masuk
+                            </>
+                          )}
                         </Button>
                       </Form>
                       
