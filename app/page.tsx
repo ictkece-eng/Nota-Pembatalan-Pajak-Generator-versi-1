@@ -11,6 +11,7 @@ import {
   Loader2, 
   AlertCircle,
   ArrowRight,
+  ArrowLeft,
   History,
   Save,
   CheckCircle2,
@@ -24,11 +25,17 @@ import {
   Eye,
   EyeOff,
   Mail,
-  Key
+  Key,
+  Gamepad2,
+  Fingerprint,
+  Smartphone,
+  LogOut
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from "motion/react";
 import { Container, Row, Col, Card, Form, Button, InputGroup, Alert, Spinner, Table, Tabs, Tab, Modal, Badge } from 'react-bootstrap';
+import * as speakeasy from 'speakeasy';
+import { QRCodeCanvas } from 'qrcode.react';
 
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY as string });
@@ -155,28 +162,116 @@ export default function Home() {
   const [showPass, setShowPass] = useState(false);
   const [loginError, setLoginError] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isIdle, setIsIdle] = useState(false);
+  const [authStep, setAuthStep] = useState(1); // 1: Password, 2: Google Authenticator (TOTP)
+  const [totpCode, setTotpCode] = useState('');
+  const [totpError, setTotpError] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  
+  const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  
+  // Shared TOTP Secret for the Billing Team
+  const TOTP_SECRET = process.env.NEXT_PUBLIC_TOTP_SECRET || 'PGASBILLING2026SECRETKEY';
+  const appName = 'PGAS Nota Generator';
+  const userName = 'Billing Team';
+  const qrValue = speakeasy.otpauthURL({
+    secret: TOTP_SECRET,
+    label: userName,
+    issuer: appName,
+    encoding: 'ascii'
+  });
 
   const notaRef = useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     // Check session storage on mount
     const authStatus = sessionStorage.getItem('billing_auth');
-    if (authStatus === 'true') {
+    const totpStatus = sessionStorage.getItem('totp_auth');
+    if (authStatus === 'true' && totpStatus === 'true') {
       setIsAuthenticated(true);
+    } else if (authStatus === 'true') {
+      setAuthStep(2);
     }
     setIsCheckingAuth(false);
   }, []);
+
+  // Idle Timer Logic
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let idleTimer: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        handleLogout();
+      }, IDLE_TIMEOUT);
+    };
+
+    const handleLogout = () => {
+      setIsAuthenticated(false);
+      setAuthStep(1);
+      setPassInput('');
+      setTotpCode('');
+      sessionStorage.removeItem('billing_auth');
+      sessionStorage.removeItem('totp_auth');
+      setIsIdle(true);
+    };
+
+    // Events to track activity
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('mousedown', resetTimer);
+    window.addEventListener('keypress', resetTimer);
+    window.addEventListener('scroll', resetTimer);
+    window.addEventListener('touchstart', resetTimer);
+
+    resetTimer();
+
+    return () => {
+      clearTimeout(idleTimer);
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('mousedown', resetTimer);
+      window.removeEventListener('keypress', resetTimer);
+      window.removeEventListener('scroll', resetTimer);
+      window.removeEventListener('touchstart', resetTimer);
+    };
+  }, [isAuthenticated]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const correctPassword = process.env.NEXT_PUBLIC_APP_PASSWORD || 'PGAS2026';
     if (passInput === correctPassword) {
-      setIsAuthenticated(true);
-      setLoginError(false);
+      setAuthStep(2);
       sessionStorage.setItem('billing_auth', 'true');
+      setLoginError(false);
     } else {
       setLoginError(true);
-      setTimeout(() => setLoginError(false), 500); // Shorter for potential shake animation hook
+      setTimeout(() => setLoginError(false), 500);
+    }
+  };
+
+  const handleGoogleVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const isValid = speakeasy.totp.verify({
+        secret: TOTP_SECRET,
+        encoding: 'ascii',
+        token: totpCode,
+        window: 1 // Allow 30s before/after
+      });
+      
+      if (isValid) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('totp_auth', 'true');
+        setIsIdle(false);
+        setTotpError(false);
+      } else {
+        setTotpError(true);
+        setTimeout(() => setTotpError(false), 500);
+      }
+    } catch (err) {
+      console.error("TOTP Verification error:", err);
+      setTotpError(true);
     }
   };
 
@@ -475,56 +570,146 @@ export default function Home() {
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: "spring", damping: 20 }}
             >
-              <Card className="login-card border-0 shadow-lg overflow-hidden" style={{ width: '100%', maxWidth: '400px' }}>
+              <Card className="login-card border-0 shadow-lg overflow-hidden" style={{ width: '100%', maxWidth: '420px' }}>
                 <div className="bg-dark text-white p-4 text-center border-bottom border-primary border-4">
                   <div className="bg-primary d-inline-flex p-3 rounded-circle shadow-sm mb-3">
-                    <Lock size={32} />
+                    {authStep === 1 ? <Lock size={32} /> : <Fingerprint size={32} />}
                   </div>
-                  <h4 className="fw-bold mb-1">Akses Terbatas</h4>
-                  <p className="small text-muted mb-0">Hanya untuk Team Billing PGAS Solution</p>
+                  <h4 className="fw-bold mb-1">
+                    {authStep === 1 ? 'Akses Terbatas' : 'Verifikasi Google'}
+                  </h4>
+                  <p className="small text-muted mb-0">
+                    {authStep === 1 
+                      ? 'Langkah 1: Masukkan Password Sistem' 
+                      : 'Langkah 2: Gunakan Akun Google PGAS'
+                    }
+                  </p>
                 </div>
                 <Card.Body className="p-4">
-                  <Form onSubmit={handleLogin}>
-                    <Form.Group className="mb-3">
-                      <Form.Label className="small fw-bold text-muted text-uppercase">Input Password Akses</Form.Label>
-                      <InputGroup className={`shadow-sm transition-all ${loginError ? 'shake-animation border-danger border' : ''}`}>
-                        <InputGroup.Text className="bg-white border-end-0">
-                          <Key size={18} className="text-primary" />
-                        </InputGroup.Text>
-                        <Form.Control
-                          type={showPass ? "text" : "password"}
-                          placeholder="••••••••"
-                          value={passInput}
-                          onChange={(e) => setPassInput(e.target.value)}
-                          className="border-start-0 py-2"
-                          autoFocus
-                        />
-                        <Button 
-                          variant="white" 
-                          className="border border-start-0" 
-                          onClick={() => setShowPass(!showPass)}
-                        >
-                          {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
-                        </Button>
-                      </InputGroup>
-                      {loginError && <div className="text-danger small mt-2 fw-bold text-center">Password tidak valid!</div>}
-                    </Form.Group>
-                    
-                    <Button variant="primary" type="submit" className="w-100 py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3">
-                      <ShieldCheck size={18} /> Buka Aplikasi
-                    </Button>
-                    
-                    <div className="text-center">
-                      <hr className="my-3 opacity-10" />
-                      <p className="small text-muted mb-2">Tidak tahu password?</p>
-                      <Button variant="outline-dark" size="sm" className="w-100 fw-bold d-flex align-items-center justify-content-center gap-2" onClick={handleRequestKey}>
-                        <Mail size={16} /> Request Key ke Team Billing
+                  {isIdle && (
+                    <Alert variant="warning" className="small py-2 text-center border-0 mb-4 shadow-sm">
+                      <div className="d-flex align-items-center justify-content-center gap-2">
+                         <Smartphone size={16} /> Sesi Anda berakhir karena tidak ada aktivitas.
+                      </div>
+                    </Alert>
+                  )}
+
+                  {authStep === 1 ? (
+                    <Form onSubmit={handleLogin}>
+                      <Form.Group className="mb-3">
+                        <Form.Label className="small fw-bold text-muted text-uppercase">Password Akses</Form.Label>
+                        <InputGroup className={`shadow-sm transition-all ${loginError ? 'shake-animation border-danger border' : ''}`}>
+                          <InputGroup.Text className="bg-white border-end-0">
+                            <Key size={18} className="text-primary" />
+                          </InputGroup.Text>
+                          <Form.Control
+                            type={showPass ? "text" : "password"}
+                            placeholder="••••••••"
+                            value={passInput}
+                            onChange={(e) => setPassInput(e.target.value)}
+                            className="border-start-0 py-2"
+                            autoFocus
+                          />
+                          <Button 
+                            variant="white" 
+                            className="border border-start-0 py-0" 
+                            onClick={() => setShowPass(!showPass)}
+                          >
+                            {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </Button>
+                        </InputGroup>
+                        {loginError && <div className="text-danger small mt-2 fw-bold text-center">Password tidak valid!</div>}
+                      </Form.Group>
+                      
+                      <Button variant="primary" type="submit" className="w-100 py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3">
+                         Selanjutnya <ArrowRight size={18} />
                       </Button>
+                      
+                      <div className="text-center">
+                        <hr className="my-3 opacity-10" />
+                        <p className="small text-muted mb-2">Butuh bantuan?</p>
+                        <Button variant="outline-dark" size="sm" className="w-100 fw-bold d-flex align-items-center justify-content-center gap-2" onClick={handleRequestKey}>
+                          <Mail size={16} /> Hubungi Team Billing
+                        </Button>
+                      </div>
+                    </Form>
+                  ) : (
+                    <div>
+                      <div className="mb-4 text-center">
+                        <p className="small text-muted mb-3">Buka aplikasi <strong>Google Authenticator</strong> di HP Anda dan masukkan kode 6 digit.</p>
+                        
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          className="text-decoration-none text-primary fw-bold p-0 mb-3"
+                          onClick={() => setShowQR(!showQR)}
+                        >
+                          {showQR ? 'Sembunyikan QR Code' : 'Lihat QR Code Setup'}
+                        </Button>
+                        
+                        {showQR && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }} 
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-white p-3 rounded border shadow-sm mb-3 d-inline-block mx-auto"
+                          >
+                            <QRCodeCanvas value={qrValue} size={160} level="H" />
+                            <div className="mt-2 text-center" style={{fontSize: '11px'}}>
+                              <code className="text-dark bg-light px-2 py-1 rounded">{TOTP_SECRET}</code>
+                            </div>
+                          </motion.div>
+                        )}
+                      </div>
+                      
+                      <Form onSubmit={handleGoogleVerify}>
+                        <Form.Group className="mb-3 text-center">
+                          <Form.Control
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            placeholder="0 0 0 0 0 0"
+                            value={totpCode}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                              setTotpCode(val);
+                            }}
+                            className={`text-center fw-bold fs-3 border-2 py-3 shadow-sm transition-all ${totpError ? 'shake-animation border-danger' : 'border-primary'}`}
+                            style={{ letterSpacing: '8px' }}
+                            autoFocus
+                          />
+                          {totpError && <div className="text-danger small mt-2 fw-bold">Kode tidak valid atau sudah kadaluarsa!</div>}
+                        </Form.Group>
+
+                        <Button 
+                          variant="primary" 
+                          type="submit" 
+                          className="w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3"
+                          disabled={totpCode.length < 6}
+                        >
+                          <ShieldCheck size={20} /> Verifikasi & Masuk
+                        </Button>
+                      </Form>
+                      
+                      <div className="text-center">
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          className="text-muted" 
+                          onClick={() => {
+                            setAuthStep(1);
+                            setPassInput('');
+                            setTotpCode('');
+                            sessionStorage.removeItem('billing_auth');
+                          }}
+                        >
+                           <ArrowLeft size={14} /> Kembali ke Langkah 1
+                        </Button>
+                      </div>
                     </div>
-                  </Form>
+                  )}
                 </Card.Body>
                 <div className="bg-light p-3 text-center border-top">
-                  <p className="mb-0 text-muted" style={{ fontSize: '10px' }}>&copy; {new Date().getFullYear()} Security System IT PGAS Solution</p>
+                  <p className="mb-0 text-muted" style={{ fontSize: '10px' }}>&copy; {new Date().getFullYear()} 2FA Security System IT PGAS Solution</p>
                 </div>
               </Card>
             </motion.div>
