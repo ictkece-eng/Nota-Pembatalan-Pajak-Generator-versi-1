@@ -170,8 +170,12 @@ export default function Home() {
   
   const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
   
-  // Shared TOTP Secret for the Billing Team (Standard Base32 string)
-  const TOTP_SECRET = process.env.NEXT_PUBLIC_TOTP_SECRET || 'KVKX2Z33K5SQ6GRY';
+  // Shared TOTP Secret (Base32 format: A-Z, 2-7 only)
+  const rawSecret = process.env.NEXT_PUBLIC_TOTP_SECRET || 'KVKX2Z33K5SQ6GRY';
+  // Sanitize: Google Authenticator only accepts Base32 (A-Z, 2-7). 
+  // We strip invalid characters and force uppercase to ensure compatibility.
+  const TOTP_SECRET = rawSecret.replace(/[^a-zA-Z2-7]/g, '').toUpperCase().slice(0, 32) || 'KVKX2Z33K5SQ6GRY';
+  
   const appName = 'PGAS Nota Generator';
   const userName = 'BillingTeam';
   
