@@ -11,6 +11,7 @@ import {
   Loader2, 
   AlertCircle,
   ArrowRight,
+  ArrowLeft,
   History,
   Save,
   CheckCircle2,
@@ -33,6 +34,8 @@ import {
 import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from "motion/react";
 import { Container, Row, Col, Card, Form, Button, InputGroup, Alert, Spinner, Table, Tabs, Tab, Modal, Badge } from 'react-bootstrap';
+import * as speakeasy from 'speakeasy';
+import { QRCodeCanvas } from 'qrcode.react';
 
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY as string });
@@ -160,20 +163,32 @@ export default function Home() {
   const [loginError, setLoginError] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isIdle, setIsIdle] = useState(false);
-  const [authStep, setAuthStep] = useState(1); // 1: Password, 2: Google Auth (Mock for now)
-  const [isGoogleVerified, setIsGoogleVerified] = useState(false);
+  const [authStep, setAuthStep] = useState(1); // 1: Password, 2: Google Authenticator (TOTP)
+  const [totpCode, setTotpCode] = useState('');
+  const [totpError, setTotpError] = useState(false);
+  const [showQR, setShowQR] = useState(false);
   
   const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  
+  // Shared TOTP Secret for the Billing Team
+  const TOTP_SECRET = process.env.NEXT_PUBLIC_TOTP_SECRET || 'PGASBILLING2026SECRETKEY';
+  const appName = 'PGAS Nota Generator';
+  const userName = 'Billing Team';
+  const qrValue = speakeasy.otpauthURL({
+    secret: TOTP_SECRET,
+    label: userName,
+    issuer: appName,
+    encoding: 'ascii'
+  });
 
   const notaRef = useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     // Check session storage on mount
     const authStatus = sessionStorage.getItem('billing_auth');
-    const googleStatus = sessionStorage.getItem('google_auth');
-    if (authStatus === 'true' && googleStatus === 'true') {
+    const totpStatus = sessionStorage.getItem('totp_auth');
+    if (authStatus === 'true' && totpStatus === 'true') {
       setIsAuthenticated(true);
-      setIsGoogleVerified(true);
     } else if (authStatus === 'true') {
       setAuthStep(2);
     }
@@ -195,11 +210,11 @@ export default function Home() {
 
     const handleLogout = () => {
       setIsAuthenticated(false);
-      setIsGoogleVerified(false);
       setAuthStep(1);
       setPassInput('');
+      setTotpCode('');
       sessionStorage.removeItem('billing_auth');
-      sessionStorage.removeItem('google_auth');
+      sessionStorage.removeItem('totp_auth');
       setIsIdle(true);
     };
 
@@ -235,12 +250,29 @@ export default function Home() {
     }
   };
 
-  const handleGoogleVerify = () => {
-    // Simulate Google Sign-In for now (will integrate Firebase later)
-    setIsGoogleVerified(true);
-    setIsAuthenticated(true);
-    sessionStorage.setItem('google_auth', 'true');
-    setIsIdle(false);
+  const handleGoogleVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const isValid = speakeasy.totp.verify({
+        secret: TOTP_SECRET,
+        encoding: 'ascii',
+        token: totpCode,
+        window: 1 // Allow 30s before/after
+      });
+      
+      if (isValid) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('totp_auth', 'true');
+        setIsIdle(false);
+        setTotpError(false);
+      } else {
+        setTotpError(true);
+        setTimeout(() => setTotpError(false), 500);
+      }
+    } catch (err) {
+      console.error("TOTP Verification error:", err);
+      setTotpError(true);
+    }
   };
 
   const handleRequestKey = () => {
@@ -602,34 +634,85 @@ export default function Home() {
                       </div>
                     </Form>
                   ) : (
-                    <div className="text-center">
-                      <div className="mb-4">
-                        <p className="small text-muted">Untuk keamanan tambahan, silakan verifikasi identitas Anda menggunakan akun Google PGAS.</p>
+                    <div>
+                      <div className="mb-4 text-center">
+                        <div className="d-flex justify-content-center mb-3">
+                          <Badge bg="info" className="p-2 px-3 rounded-pill bg-opacity-10 text-info border border-info border-opacity-25">
+                            <Smartphone size={14} className="me-1" /> Scan barcode cukup 1x saja saat setup
+                          </Badge>
+                        </div>
+                        <p className="small text-muted mb-3">Masukkan 6 digit kode dari aplikasi <strong>Google Authenticator</strong> yang sudah terdaftar di HP Anda.</p>
+                        
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          className="text-decoration-none text-primary fw-bold p-0 mb-3 small"
+                          style={{ fontSize: '12px' }}
+                          onClick={() => setShowQR(!showQR)}
+                        >
+                          {showQR ? 'Sembunyikan Instruksi Setup' : 'Bantuan / Setup Awal (Scan QR)'}
+                        </Button>
+                        
+                        {showQR && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }} 
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-white p-3 rounded border shadow-sm mb-3 d-inline-block mx-auto text-center"
+                          >
+                            <div className="small fw-bold mb-2">Setup Sekali Saja:</div>
+                            <QRCodeCanvas value={qrValue} size={140} level="H" />
+                            <div className="mt-2" style={{fontSize: '10px'}}>
+                              <p className="mb-1 text-muted">Scan menggunakan Google Authenticator</p>
+                              <code className="text-dark bg-light px-2 py-1 rounded">{TOTP_SECRET}</code>
+                            </div>
+                          </motion.div>
+                        )}
                       </div>
                       
-                      <Button 
-                        variant="white" 
-                        onClick={handleGoogleVerify}
-                        className="w-100 py-3 border-2 border-primary text-dark fw-bold shadow-sm d-flex align-items-center justify-content-center gap-3 transition-all hover-bg-light"
-                      >
-                        <div className="bg-primary p-2 rounded-circle text-white">
-                          <ShieldCheck size={20} />
-                        </div>
-                        <span>Masuk dengan Google</span>
-                      </Button>
+                      <Form onSubmit={handleGoogleVerify}>
+                        <Form.Group className="mb-3 text-center">
+                          <Form.Control
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            placeholder="0 0 0 0 0 0"
+                            value={totpCode}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                              setTotpCode(val);
+                            }}
+                            className={`text-center fw-bold fs-3 border-2 py-3 shadow-sm transition-all ${totpError ? 'shake-animation border-danger' : 'border-primary'}`}
+                            style={{ letterSpacing: '8px' }}
+                            autoFocus
+                          />
+                          {totpError && <div className="text-danger small mt-2 fw-bold">Kode tidak valid atau sudah kadaluarsa!</div>}
+                        </Form.Group>
+
+                        <Button 
+                          variant="primary" 
+                          type="submit" 
+                          className="w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3"
+                          disabled={totpCode.length < 6}
+                        >
+                          <ShieldCheck size={20} /> Verifikasi & Masuk
+                        </Button>
+                      </Form>
                       
-                      <Button 
-                        variant="link" 
-                        size="sm" 
-                        className="mt-3 text-muted" 
-                        onClick={() => {
-                          setAuthStep(1);
-                          setPassInput('');
-                          sessionStorage.removeItem('billing_auth');
-                        }}
-                      >
-                         Kembali ke Langkah 1
-                      </Button>
+                      <div className="text-center">
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          className="text-muted" 
+                          onClick={() => {
+                            setAuthStep(1);
+                            setPassInput('');
+                            setTotpCode('');
+                            sessionStorage.removeItem('billing_auth');
+                          }}
+                        >
+                           <ArrowLeft size={14} /> Kembali ke Langkah 1
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </Card.Body>
