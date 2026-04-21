@@ -39,12 +39,50 @@ function parseIndoDateToISO(dateStr: any): string | null {
   return cleanStr;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await initDb();
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search') || '';
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const offset = (page - 1) * limit;
+
     const db = await getDb();
-    const [rows] = await db.execute('SELECT * FROM nota_pajak ORDER BY created_at DESC LIMIT 50');
-    return NextResponse.json(rows);
+    
+    let query = 'SELECT * FROM nota_pajak';
+    let countQuery = 'SELECT COUNT(*) as total FROM nota_pajak';
+    const params: any[] = [];
+    const countParams: any[] = [];
+
+    if (search) {
+      const searchPattern = `%${search}%`;
+      const whereClause = ' WHERE nomor LIKE ? OR faktur_nomor LIKE ? OR penerima_name LIKE ?';
+      query += whereClause;
+      countQuery += whereClause;
+      params.push(searchPattern, searchPattern, searchPattern);
+      countParams.push(searchPattern, searchPattern, searchPattern);
+    }
+
+    query += ` ORDER BY updated_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    
+    // Using .query instead of .execute because many MySQL drivers/proxies 
+    // have issues with placeholders in LIMIT/OFFSET clauses
+    const [rows]: any = await db.query(query, params);
+    const [countRows]: any = await db.query(countQuery, countParams);
+    
+    const total = countRows[0].total;
+    const totalPages = Math.ceil(total / limit);
+
+    return NextResponse.json({
+      data: rows,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages
+      }
+    });
   } catch (error: any) {
     console.error('Database Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -105,7 +143,8 @@ export async function PUT(request: Request) {
         nomor = ?, faktur_nomor = ?, faktur_tanggal = ?, 
         penerima_name = ?, penerima_address = ?, penerima_npwp = ?,
         pemberi_name = ?, pemberi_address = ?, pemberi_npwp = ?,
-        items = ?, tanggal_dokumen = ?, penandatangan = ?
+        items = ?, tanggal_dokumen = ?, penandatangan = ?,
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
         data.nomor,

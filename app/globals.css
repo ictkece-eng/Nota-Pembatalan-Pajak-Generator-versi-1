@@ -166,3 +166,34 @@ body {
     background-color: rgba(13, 110, 253, 0.05);
     border-bottom: 3px solid #dee2e6;
 }
+
+/* Security Overlay */
+.security-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(12px);
+    z-index: 10000;
+}
+
+.login-card {
+    border-radius: 1.5rem;
+}
+
+.shake-animation {
+    animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+
+.transition-all {
+    transition: all 0.3s ease;
+}

@@ -14,7 +14,17 @@ import {
   History,
   Save,
   CheckCircle2,
-  FileCheck2
+  FileCheck2,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Lock,
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  Mail,
+  Key
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from "motion/react";
@@ -130,28 +140,85 @@ export default function Home() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  
+  // Pagination & Search States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [historyLimit] = useState(10);
+
+  // Authentication States
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passInput, setPassInput] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [loginError, setLoginError] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const notaRef = useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (activeTab === 'history') {
-      fetchHistory();
+    // Check session storage on mount
+    const authStatus = sessionStorage.getItem('billing_auth');
+    if (authStatus === 'true') {
+      setIsAuthenticated(true);
     }
-  }, [activeTab]);
+    setIsCheckingAuth(false);
+  }, []);
 
-  const fetchHistory = async () => {
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const correctPassword = process.env.NEXT_PUBLIC_APP_PASSWORD || 'PGAS2026';
+    if (passInput === correctPassword) {
+      setIsAuthenticated(true);
+      setLoginError(false);
+      sessionStorage.setItem('billing_auth', 'true');
+    } else {
+      setLoginError(true);
+      setTimeout(() => setLoginError(false), 500); // Shorter for potential shake animation hook
+    }
+  };
+
+  const handleRequestKey = () => {
+    const subject = encodeURIComponent('Request Akses Key: Generator Nota Pajak');
+    const body = encodeURIComponent('Halo Team Billing,\n\nMohon bantuannya untuk menginformasikan Password Akses untuk aplikasi Generator Nota Pajak.\n\nTerima kasih.');
+    const emails = 'firka.edmianti@pgnsolution.co.id,tirto.lutvi@pgn-solution.co.id';
+    window.location.href = `mailto:${emails}?subject=${subject}&body=${body}`;
+  };
+
+  React.useEffect(() => {
+    if (isAuthenticated && activeTab === 'history') {
+      fetchHistory(currentPage, searchQuery);
+    }
+  }, [activeTab, currentPage, searchQuery]);
+
+  const fetchHistory = async (page = 1, search = '') => {
     setIsLoadingHistory(true);
+    setHistoryError(null);
     try {
-      const res = await fetch('/api/nota');
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setHistory(data);
+      const res = await fetch(`/api/nota?page=${page}&limit=${historyLimit}&search=${encodeURIComponent(search)}`);
+      const result = await res.json();
+      if (res.ok && result.data) {
+        setHistory(result.data);
+        setTotalPages(result.pagination.totalPages);
+        setCurrentPage(result.pagination.page);
+      } else {
+        setHistoryError(result.error || "Gagal memuat riwayat data.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch history:", err);
+      setHistoryError(err.message || "Gagal menghubungi server.");
     } finally {
+      setIsLoadingHistory(true); // Wait for state updates
       setIsLoadingHistory(false);
     }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSearchQuery(searchInput);
+    setCurrentPage(1); // Reset to first page on search
   };
 
   const handleSaveToDb = async () => {
@@ -394,6 +461,77 @@ export default function Home() {
 
   return (
     <div className="pb-5">
+      {/* Authentication Overlay */}
+      <AnimatePresence>
+        {(!isAuthenticated && !isCheckingAuth) && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="security-overlay d-flex align-items-center justify-content-center p-3"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", damping: 20 }}
+            >
+              <Card className="login-card border-0 shadow-lg overflow-hidden" style={{ width: '100%', maxWidth: '400px' }}>
+                <div className="bg-dark text-white p-4 text-center border-bottom border-primary border-4">
+                  <div className="bg-primary d-inline-flex p-3 rounded-circle shadow-sm mb-3">
+                    <Lock size={32} />
+                  </div>
+                  <h4 className="fw-bold mb-1">Akses Terbatas</h4>
+                  <p className="small text-muted mb-0">Hanya untuk Team Billing PGAS Solution</p>
+                </div>
+                <Card.Body className="p-4">
+                  <Form onSubmit={handleLogin}>
+                    <Form.Group className="mb-3">
+                      <Form.Label className="small fw-bold text-muted text-uppercase">Input Password Akses</Form.Label>
+                      <InputGroup className={`shadow-sm transition-all ${loginError ? 'shake-animation border-danger border' : ''}`}>
+                        <InputGroup.Text className="bg-white border-end-0">
+                          <Key size={18} className="text-primary" />
+                        </InputGroup.Text>
+                        <Form.Control
+                          type={showPass ? "text" : "password"}
+                          placeholder="••••••••"
+                          value={passInput}
+                          onChange={(e) => setPassInput(e.target.value)}
+                          className="border-start-0 py-2"
+                          autoFocus
+                        />
+                        <Button 
+                          variant="white" 
+                          className="border border-start-0" 
+                          onClick={() => setShowPass(!showPass)}
+                        >
+                          {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </Button>
+                      </InputGroup>
+                      {loginError && <div className="text-danger small mt-2 fw-bold text-center">Password tidak valid!</div>}
+                    </Form.Group>
+                    
+                    <Button variant="primary" type="submit" className="w-100 py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3">
+                      <ShieldCheck size={18} /> Buka Aplikasi
+                    </Button>
+                    
+                    <div className="text-center">
+                      <hr className="my-3 opacity-10" />
+                      <p className="small text-muted mb-2">Tidak tahu password?</p>
+                      <Button variant="outline-dark" size="sm" className="w-100 fw-bold d-flex align-items-center justify-content-center gap-2" onClick={handleRequestKey}>
+                        <Mail size={16} /> Request Key ke Team Billing
+                      </Button>
+                    </div>
+                  </Form>
+                </Card.Body>
+                <div className="bg-light p-3 text-center border-top">
+                  <p className="mb-0 text-muted" style={{ fontSize: '10px' }}>&copy; {new Date().getFullYear()} Security System IT PGAS Solution</p>
+                </div>
+              </Card>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header Navbar */}
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark py-3 mb-4 no-print shadow-sm border-bottom border-primary border-3">
         <Container>
@@ -843,81 +981,191 @@ export default function Home() {
             </Row>
           </Tab>
           <Tab eventKey="history" title="History Data">
-             <Card className="shadow-sm">
-                <Card.Header className="bg-dark text-white d-flex justify-content-between align-items-center">
-                  <h5 className="mb-0">History Nota Pembatalan</h5>
-                  <Button variant="outline-light" size="sm" onClick={fetchHistory} disabled={isLoadingHistory}>
-                    {isLoadingHistory ? <Spinner animation="border" size="sm" /> : 'Refresh'}
-                  </Button>
+             <Card className="shadow-sm border-0">
+                <Card.Header className="bg-dark text-white p-3">
+                  <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                    <h5 className="mb-0 fw-bold d-flex align-items-center gap-2">
+                       <History size={20} className="text-primary" />
+                       Riwayat Nota Pembatalan
+                    </h5>
+                    
+                    <Form onSubmit={handleSearch} className="d-flex gap-2">
+                      <InputGroup size="sm">
+                        <Form.Control 
+                          placeholder="Cari nomor nota/faktur..." 
+                          value={searchInput}
+                          onChange={(e) => setSearchInput(e.target.value)}
+                          className="border-secondary"
+                        />
+                        <Button variant="primary" type="submit">
+                          <Search size={16} />
+                        </Button>
+                      </InputGroup>
+                      <Button 
+                        variant="outline-light" 
+                        size="sm" 
+                        onClick={() => {
+                          setSearchInput('');
+                          setSearchQuery('');
+                          setCurrentPage(1);
+                        }}
+                        title="Clear Search"
+                      >
+                        <RefreshCw size={16} />
+                      </Button>
+                    </Form>
+                  </div>
                 </Card.Header>
-                <Card.Body>
-                  {isLoadingHistory && history.length === 0 ? (
+                <Card.Body className="p-0">
+                  {historyError && (
+                    <Alert variant="danger" className="m-3 d-flex align-items-center gap-2 border-0 shadow-sm">
+                      <AlertCircle size={20} />
+                      <div>
+                        <h6 className="mb-0 fw-bold">Gagal Mengambil Data</h6>
+                        <p className="mb-0 small opacity-75">{historyError}</p>
+                      </div>
+                      <Button variant="outline-danger" size="sm" className="ms-auto" onClick={() => fetchHistory(currentPage, searchQuery)}>
+                        Coba Lagi
+                      </Button>
+                    </Alert>
+                  )}
+                  
+                  {isLoadingHistory ? (
                     <div className="text-center py-5">
                       <Spinner animation="border" variant="primary" />
-                      <p className="mt-2">Memuat data...</p>
+                      <p className="mt-2 text-muted">Memuat data history...</p>
                     </div>
                   ) : history.length === 0 ? (
                     <div className="text-center py-5">
-                      <History size={48} className="text-muted mb-3" />
-                      <p className="text-muted">Belum ada history data.</p>
+                      <div className="bg-light rounded-circle d-inline-flex p-4 mb-3">
+                        <History size={48} className="text-muted" />
+                      </div>
+                      <p className="text-muted fw-bold">Belum ada history data.</p>
+                      {searchQuery && (
+                        <Button variant="link" onClick={() => { setSearchInput(''); setSearchQuery(''); }}>
+                          Hapus Filter Pencarian
+                        </Button>
+                      )}
                     </div>
                   ) : (
-                    <div className="table-responsive">
-                      <Table hover className="align-middle">
-                        <thead className="bg-light">
-                          <tr>
-                            <th>Nomor Nota</th>
-                            <th>Faktur Pajak</th>
-                            <th>Penerima</th>
-                            <th>Tanggal Buat</th>
-                            <th className="text-center">Aksi</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {history.map((item) => (
-                            <tr key={item.id}>
-                              <td className="fw-bold text-primary">
-                                <div className="d-flex align-items-center gap-2">
-                                  <FileText size={16} className="opacity-50" />
-                                  <span className="text-truncate" style={{maxWidth: '200px'}} title={item.nomor}>{item.nomor}</span>
-                                </div>
-                              </td>
-                              <td>
-                                <div className="small fw-bold text-dark">{item.faktur_nomor}</div>
-                                <div className="small text-muted">{formatDateIndo(item.faktur_tanggal)}</div>
-                              </td>
-                              <td>
-                                <Badge bg="light" text="dark" className="border shadow-sm fw-normal px-2 py-1">
-                                  {item.penerima_name}
-                                </Badge>
-                              </td>
-                              <td className="small text-muted">{new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                              <td className="text-center">
-                                <div className="d-flex justify-content-center gap-2">
-                                  <Button 
-                                    variant="outline-primary" 
-                                    size="sm" 
-                                    onClick={() => loadFromHistory(item)} 
-                                    className="fw-bold d-flex align-items-center gap-1 px-3 shadow-sm border-2"
-                                  >
-                                    <Save size={14} /> Buka
-                                  </Button>
-                                  <Button 
-                                    variant="outline-danger" 
-                                    size="sm" 
-                                    onClick={() => handleDelete(item.id)} 
-                                    className="d-flex align-items-center justify-content-center p-2 rounded-circle border-0 text-danger shadow-sm"
-                                    title="Hapus"
-                                  >
-                                    <Trash2 size={16} />
-                                  </Button>
-                                </div>
-                              </td>
+                    <>
+                      <div className="table-responsive">
+                        <Table hover className="align-middle mb-0 custom-history-table">
+                          <thead className="bg-light">
+                            <tr>
+                              <th className="px-4 py-3">Nomor Nota</th>
+                              <th className="py-3">Faktur Pajak</th>
+                              <th className="py-3">Penerima</th>
+                              <th className="py-3">Tanggal Buat</th>
+                              <th className="text-center py-3">Aksi</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </Table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {history.map((item) => (
+                              <tr key={item.id}>
+                                <td className="px-4 py-3">
+                                  <div className="fw-bold text-primary mb-0 d-flex align-items-center gap-2">
+                                    <FileText size={16} className="opacity-50" />
+                                    <span className="text-truncate" style={{maxWidth: '220px'}} title={item.nomor}>{item.nomor}</span>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="small fw-bold text-dark">{item.faktur_nomor}</div>
+                                  <div className="small text-muted">{formatDateIndo(item.faktur_tanggal)}</div>
+                                </td>
+                                <td>
+                                  <Badge bg="light" text="dark" className="border shadow-sm fw-normal px-2 py-1">
+                                    {item.penerima_name}
+                                  </Badge>
+                                </td>
+                                <td className="small text-muted">
+                                  {new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </td>
+                                <td className="text-center">
+                                  <div className="d-flex justify-content-center gap-2">
+                                    <Button 
+                                      variant="outline-primary" 
+                                      size="sm" 
+                                      onClick={() => loadFromHistory(item)} 
+                                      className="fw-bold d-flex align-items-center gap-1 px-3 shadow-sm border-2 rounded-pill"
+                                    >
+                                      <Save size={14} /> Buka
+                                    </Button>
+                                    <Button 
+                                      variant="outline-danger" 
+                                      size="sm" 
+                                      onClick={() => handleDelete(item.id)} 
+                                      className="d-flex align-items-center justify-content-center p-2 rounded-circle border-danger text-danger hover-bg-danger transition-all shadow-sm"
+                                      title="Hapus"
+                                    >
+                                      <Trash2 size={16} />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </div>
+                      
+                      {/* Pagination UI */}
+                      {totalPages > 1 && (
+                        <div className="d-flex justify-content-between align-items-center p-3 border-top bg-light">
+                          <div className="small text-muted">
+                            Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong>
+                          </div>
+                          <div className="d-flex gap-2">
+                            <Button 
+                              variant="outline-secondary" 
+                              size="sm" 
+                              disabled={currentPage === 1}
+                              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                              className="d-flex align-items-center gap-1 shadow-sm"
+                            >
+                              <ChevronLeft size={16} /> Prev
+                            </Button>
+                            <div className="d-none d-md-flex gap-1">
+                              {[...Array(totalPages)].map((_, i) => {
+                                const pageNum = i + 1;
+                                // Simple logic to show current, first, last and 2 neighbors
+                                if (
+                                  pageNum === 1 || 
+                                  pageNum === totalPages || 
+                                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                                ) {
+                                  return (
+                                    <Button
+                                      key={pageNum}
+                                      variant={currentPage === pageNum ? "primary" : "outline-secondary"}
+                                      size="sm"
+                                      onClick={() => setCurrentPage(pageNum)}
+                                      className="shadow-sm"
+                                    >
+                                      {pageNum}
+                                    </Button>
+                                  );
+                                } else if (
+                                  (pageNum === currentPage - 2) || 
+                                  (pageNum === currentPage + 2)
+                                ) {
+                                  return <span key={pageNum} className="px-1">...</span>;
+                                }
+                                return null;
+                              })}
+                            </div>
+                            <Button 
+                              variant="outline-secondary" 
+                              size="sm" 
+                              disabled={currentPage === totalPages}
+                              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                              className="d-flex align-items-center gap-1 shadow-sm"
+                            >
+                              Next <ChevronRight size={16} />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </Card.Body>
              </Card>

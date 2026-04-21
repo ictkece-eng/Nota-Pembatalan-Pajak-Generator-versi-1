@@ -69,7 +69,19 @@ export async function initDb() {
       items JSON,
       tanggal_dokumen DATE,
       penandatangan VARCHAR(255),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+
+  // Ensure updated_at column exists for older tables
+  try {
+    await db.execute(`
+      ALTER TABLE nota_pajak 
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    `);
+  } catch (error) {
+    // If IF NOT EXISTS is not supported (standard MySQL), it might throw error if column exists
+    console.log('updated_at column check/add');
+  }
 }
