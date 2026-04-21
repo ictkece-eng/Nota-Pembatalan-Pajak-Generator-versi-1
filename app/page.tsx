@@ -170,16 +170,13 @@ export default function Home() {
   
   const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
   
-  // Shared TOTP Secret for the Billing Team (Must be Base32 for Google Authenticator)
+  // Shared TOTP Secret for the Billing Team (Standard Base32 string)
   const TOTP_SECRET = process.env.NEXT_PUBLIC_TOTP_SECRET || 'KVKX2Z33K5SQ6GRY';
   const appName = 'PGAS Nota Generator';
-  const userName = 'Billing Team';
-  const qrValue = speakeasy.otpauthURL({
-    secret: TOTP_SECRET,
-    label: userName,
-    issuer: appName,
-    encoding: 'base32'
-  });
+  const userName = 'BillingTeam';
+  
+  // Create the URL manually to ensure 100% compatibility with all Authenticator apps
+  const qrValue = `otpauth://totp/${encodeURIComponent(appName)}:${encodeURIComponent(userName)}?secret=${TOTP_SECRET}&issuer=${encodeURIComponent(appName)}&algorithm=SHA1&digits=6&period=30`;
 
   const notaRef = useRef<HTMLDivElement>(null);
 
@@ -665,11 +662,18 @@ export default function Home() {
                             animate={{ opacity: 1, y: 0 }}
                             className="bg-white p-3 rounded border shadow-sm mb-3 d-inline-block mx-auto text-center"
                           >
-                            <div className="small fw-bold mb-2">Setup Sekali Saja:</div>
-                            <QRCodeCanvas value={qrValue} size={140} level="H" />
-                            <div className="mt-2" style={{fontSize: '10px'}}>
-                              <p className="mb-1 text-muted">Scan menggunakan Google Authenticator</p>
-                              <code className="text-dark bg-light px-2 py-1 rounded">{TOTP_SECRET}</code>
+                            <div className="small fw-bold mb-2 text-primary">Setup Sekali Saja:</div>
+                            <div className="bg-white p-2 rounded border mb-2 d-inline-block">
+                              <QRCodeCanvas value={qrValue} size={180} level="H" includeMargin={true} />
+                            </div>
+                            <div className="mt-2" style={{fontSize: '11px'}}>
+                              <p className="mb-1 text-muted">Scan QR di atas, atau masukkan kunci ini secara manual di aplikasi:</p>
+                              <div className="d-flex align-items-center justify-content-center gap-2">
+                                <code className="text-dark bg-secondary bg-opacity-10 px-3 py-2 rounded fw-bold fs-6">
+                                  {TOTP_SECRET}
+                                </code>
+                              </div>
+                              <p className="mt-2 mb-0 text-info fw-bold">Pilih &quot;Enter a setup key&quot; di aplikasi HP</p>
                             </div>
                           </motion.div>
                         )}
