@@ -61,6 +61,7 @@ interface NotaData {
   pemberi: TaxParty;
   items: TaxItem[];
   tanggalDokumen: string;
+  kotaDokumen: string;
   penandatangan: string;
 }
 
@@ -86,6 +87,7 @@ const initialData: NotaData = {
     }
   ],
   tanggalDokumen: '2025-02-13',
+  kotaDokumen: 'Jakarta',
   penandatangan: 'PT Pertamina Hulu Energi ONWJ'
 };
 
@@ -360,6 +362,7 @@ export default function Home() {
       },
       items: typeof item.items === 'string' ? JSON.parse(item.items) : item.items,
       tanggalDokumen: item.tanggal_dokumen ? new Date(item.tanggal_dokumen).toISOString().split('T')[0] : '',
+      kotaDokumen: item.kota_dokumen || 'Jakarta',
       penandatangan: item.penandatangan
     };
     setData(formattedItem);
@@ -457,6 +460,7 @@ export default function Home() {
                   pemberiName: { type: Type.STRING },
                   pemberiAddress: { type: Type.STRING },
                   pemberiNpwp: { type: Type.STRING },
+                  kotaDokumen: { type: Type.STRING },
                   items: {
                     type: Type.ARRAY,
                     items: {
@@ -491,6 +495,7 @@ export default function Home() {
               address: extracted.pemberiAddress || prev.pemberi.address,
               npwp: (extracted.pemberiNpwp || '').replace(/\D/g, '').slice(0, 15)
             },
+            kotaDokumen: extracted.kotaDokumen || prev.kotaDokumen,
             items: extracted.items.map((it: any) => ({
               id: Math.random().toString(36).substr(2, 9),
               description: it.description,
@@ -1024,6 +1029,15 @@ export default function Home() {
               <Card.Body>
                 <Row className="g-3">
                   <Col md={6}>
+                    <Form.Label className="small fw-bold">Kota Penandatangan</Form.Label>
+                    <Form.Control 
+                      type="text" 
+                      value={data.kotaDokumen}
+                      onChange={(e) => setData({...data, kotaDokumen: e.target.value})}
+                      placeholder="Contoh: Jakarta"
+                    />
+                  </Col>
+                  <Col md={6}>
                     <Form.Label className="small fw-bold">Tanggal Nota</Form.Label>
                     <Form.Control 
                       type="date" 
@@ -1031,7 +1045,7 @@ export default function Home() {
                       onChange={(e) => setData({...data, tanggalDokumen: e.target.value})}
                     />
                   </Col>
-                  <Col md={6}>
+                  <Col md={12}>
                     <Form.Label className="small fw-bold">Nama Penandatangan</Form.Label>
                     <Form.Control 
                       type="text" 
@@ -1164,7 +1178,7 @@ export default function Home() {
 
                   <div className="mt-4 d-flex flex-column align-items-end">
                     <div className="text-center" style={{ minWidth: '250px' }}>
-                      <p className="mb-1">Jakarta, {formatDateIndo(data.tanggalDokumen)}</p>
+                      <p className="mb-1">{data.kotaDokumen}, {formatDateIndo(data.tanggalDokumen)}</p>
                       <p className="fw-bold mb-0">{data.penandatangan}</p>
                       <div style={{ height: '70px' }}></div>
                     </div>

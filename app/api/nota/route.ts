@@ -103,8 +103,8 @@ export async function POST(request: Request) {
         nomor, faktur_nomor, faktur_tanggal, 
         penerima_name, penerima_address, penerima_npwp,
         pemberi_name, pemberi_address, pemberi_npwp,
-        items, tanggal_dokumen, penandatangan
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        items, tanggal_dokumen, kota_dokumen, penandatangan
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.nomor,
         data.fakturNomor,
@@ -117,6 +117,7 @@ export async function POST(request: Request) {
         data.pemberi.npwp,
         JSON.stringify(data.items),
         tanggalDokumen,
+        data.kotaDokumen || 'Jakarta',
         data.penandatangan
       ]
     );
@@ -143,7 +144,7 @@ export async function PUT(request: Request) {
         nomor = ?, faktur_nomor = ?, faktur_tanggal = ?, 
         penerima_name = ?, penerima_address = ?, penerima_npwp = ?,
         pemberi_name = ?, pemberi_address = ?, pemberi_npwp = ?,
-        items = ?, tanggal_dokumen = ?, penandatangan = ?,
+        items = ?, tanggal_dokumen = ?, kota_dokumen = ?, penandatangan = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
@@ -158,6 +159,7 @@ export async function PUT(request: Request) {
         data.pemberi.npwp,
         JSON.stringify(data.items),
         tanggalDokumen,
+        data.kotaDokumen || 'Jakarta',
         data.penandatangan,
         id
       ]
