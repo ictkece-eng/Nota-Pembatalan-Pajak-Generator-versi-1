@@ -5,7 +5,6 @@ import {
   Plus, 
   Trash2, 
   Printer, 
-  Download,
   FileText, 
   Upload, 
   Loader2, 
@@ -14,12 +13,14 @@ import {
   ArrowLeft,
   History,
   Save,
+  Download,
   CheckCircle2,
   FileCheck2,
   Search,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  TrendingUp,
   Lock,
   ShieldCheck,
   Eye,
@@ -62,6 +63,7 @@ interface NotaData {
   items: TaxItem[];
   tanggalDokumen: string;
   kotaDokumen: string;
+  ppnManual?: number;
   penandatangan: string;
 }
 
@@ -88,6 +90,7 @@ const initialData: NotaData = {
   ],
   tanggalDokumen: '2025-02-13',
   kotaDokumen: 'Jakarta',
+  ppnManual: undefined,
   penandatangan: 'PT Pertamina Hulu Energi ONWJ'
 };
 
@@ -156,6 +159,7 @@ export default function Home() {
   const [searchInput, setSearchInput] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [grandTotals, setGrandTotals] = useState({ dpp: 0, ppn: 0 });
   const [historyLimit] = useState(10);
 
   // Authentication States
@@ -300,6 +304,10 @@ export default function Home() {
         setHistory(result.data);
         setTotalPages(result.pagination.totalPages);
         setCurrentPage(result.pagination.page);
+        setGrandTotals({
+          dpp: result.pagination.grandTotalDPP || 0,
+          ppn: result.pagination.grandTotalPPN || 0
+        });
       } else {
         setHistoryError(result.error || "Gagal memuat riwayat data.");
       }
@@ -363,6 +371,7 @@ export default function Home() {
       items: typeof item.items === 'string' ? JSON.parse(item.items) : item.items,
       tanggalDokumen: item.tanggal_dokumen ? new Date(item.tanggal_dokumen).toISOString().split('T')[0] : '',
       kotaDokumen: item.kota_dokumen || 'Jakarta',
+      ppnManual: item.ppn_manual || undefined,
       penandatangan: item.penandatangan
     };
     setData(formattedItem);
@@ -395,8 +404,63 @@ export default function Home() {
   }, [data.items]);
 
   const ppnAmount = useMemo(() => {
+    if (data.ppnManual !== undefined && data.ppnManual !== null) {
+      return data.ppnManual;
+    }
     return Math.floor(totalAmount * 0.11);
-  }, [totalAmount]);
+  }, [totalAmount, data.ppnManual]);
+
+  const totalPageAmount = useMemo(() => {
+    return history.reduce((sum, item) => {
+      const items = typeof item.items === 'string' ? JSON.parse(item.items) : item.items;
+      return sum + items.reduce((iSum: number, i: any) => iSum + i.amount, 0);
+    }, 0);
+  }, [history]);
+
+  const totalPagePPN = useMemo(() => {
+    return history.reduce((sum, item) => {
+      if (item.ppn_manual) return sum + Number(item.ppn_manual);
+      const items = typeof item.items === 'string' ? JSON.parse(item.items) : item.items;
+      const amount = items.reduce((iSum: number, i: any) => iSum + i.amount, 0);
+      return sum + Math.floor(amount * 0.11);
+    }, 0);
+  }, [history]);
+
+  const handleExportCSV = () => {
+    if (history.length === 0) return;
+    
+    // Header
+    const headers = ["ID", "Nomor Nota", "Faktur Nomor", "Faktur Tanggal", "Penerima", "Pemberi", "Total DPP", "PPN", "Kota", "Penandatangan", "Tanggal Buat"];
+    
+    const rows = history.map(item => {
+      const items = typeof item.items === 'string' ? JSON.parse(item.items) : item.items;
+      const dpp = items.reduce((sum: number, i: any) => sum + i.amount, 0);
+      const ppn = item.ppn_manual || Math.floor(dpp * 0.11);
+      
+      return [
+        item.id,
+        item.nomor,
+        item.faktur_nomor,
+        item.faktur_tanggal,
+        item.penerima_name,
+        item.pemberi_name,
+        dpp,
+        ppn,
+        item.kota_dokumen,
+        item.penandatangan,
+        item.created_at
+      ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",");
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `History_Nota_Pembatalan_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handlePrint = () => {
     window.print();
@@ -831,6 +895,20 @@ export default function Home() {
                           </Button>
                         )}
                         <Button 
+                          variant="outline-danger" 
+                          size="sm" 
+                          className="fw-bold"
+                          onClick={() => {
+                            if (confirm('Bersihkan semua field?')) {
+                              setData(initialData);
+                              setEditingId(null);
+                            }
+                          }}
+                          disabled={isExtracting || isSaving}
+                        >
+                          <RefreshCw size={14} className="me-1" /> Reset Form
+                        </Button>
+                        <Button 
                           variant={saveSuccess ? "success" : editingId ? "info" : "primary"} 
                           onClick={handleSaveToDb} 
                           disabled={isSaving}
@@ -1021,6 +1099,29 @@ export default function Home() {
                     </Form.Group>
                   </div>
                 ))}
+
+                <div className="bg-light p-3 rounded border border-info-subtle">
+                  <Form.Label className="small fw-bold text-info-emphasis d-flex align-items-center gap-2">
+                    <Smartphone size={14} /> Penyesuaian PPN Manual (Opsional)
+                  </Form.Label>
+                  <InputGroup size="sm">
+                    <InputGroup.Text>Rp</InputGroup.Text>
+                    <Form.Control 
+                      type="number" 
+                      placeholder={`Auto: ${formatCurrency(Math.floor(totalAmount * 0.11))}`}
+                      value={data.ppnManual || ''}
+                      onChange={(e) => setData({...data, ppnManual: e.target.value ? Number(e.target.value) : undefined})}
+                    />
+                    <Button 
+                      variant="outline-secondary"
+                      onClick={() => setData({...data, ppnManual: undefined})}
+                      title="Gunakan Hitungan Otomatis"
+                    >
+                      <RefreshCw size={14} /> Reset
+                    </Button>
+                  </InputGroup>
+                  <small className="text-muted d-block mt-1" style={{ fontSize: '11px' }}>Gunakan ini jika ada selisih angka (pembulatan) dengan file PDF asli.</small>
+                </div>
               </Card.Body>
             </Card>
 
@@ -1224,6 +1325,41 @@ export default function Home() {
                   </div>
                 </Card.Header>
                 <Card.Body className="p-0">
+                  <div className="p-3 border-bottom bg-info-subtle bg-opacity-10 d-flex flex-wrap gap-4 align-items-center justify-content-center justify-content-md-start">
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="bg-primary bg-opacity-10 p-2 rounded">
+                        <FileText size={20} className="text-primary" />
+                      </div>
+                      <div>
+                        <div className="small text-muted text-uppercase fw-bold" style={{ fontSize: '10px', letterSpacing: '1px' }}>Total Nota (Page)</div>
+                        <div className="h5 mb-0 fw-bold font-monospace">{history.length}</div>
+                      </div>
+                    </div>
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="bg-success bg-opacity-10 p-2 rounded">
+                        <TrendingUp size={20} className="text-success" />
+                      </div>
+                      <div>
+                        <div className="small text-muted text-uppercase fw-bold" style={{ fontSize: '10px', letterSpacing: '1px' }}>Total DPP (Global)</div>
+                        <div className="h5 mb-0 fw-bold font-monospace text-success">Rp {formatCurrency(grandTotals.dpp)}</div>
+                      </div>
+                    </div>
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="bg-info bg-opacity-10 p-2 rounded">
+                        <Smartphone size={20} className="text-info" />
+                      </div>
+                      <div>
+                        <div className="small text-muted text-uppercase fw-bold" style={{ fontSize: '10px', letterSpacing: '1px' }}>Total PPN (Global)</div>
+                        <div className="h5 mb-0 fw-bold font-monospace text-info">Rp {formatCurrency(grandTotals.ppn)}</div>
+                      </div>
+                    </div>
+                    <div className="ms-md-auto">
+                      <Button variant="outline-dark" size="sm" className="fw-bold d-flex align-items-center gap-2 border-2 rounded-pill px-3 shadow-sm" onClick={handleExportCSV}>
+                        <Download size={14} /> Export CSV
+                      </Button>
+                    </div>
+                  </div>
+
                   {historyError && (
                     <Alert variant="danger" className="m-3 d-flex align-items-center gap-2 border-0 shadow-sm">
                       <AlertCircle size={20} />
@@ -1273,11 +1409,11 @@ export default function Home() {
                                 <td className="px-4 py-3">
                                   <div className="fw-bold text-primary mb-0 d-flex align-items-center gap-2">
                                     <FileText size={16} className="opacity-50" />
-                                    <span className="text-truncate" style={{maxWidth: '220px'}} title={item.nomor}>{item.nomor}</span>
+                                    <span className="text-truncate font-monospace" style={{maxWidth: '220px'}} title={item.nomor}>{item.nomor}</span>
                                   </div>
                                 </td>
                                 <td>
-                                  <div className="small fw-bold text-dark">{item.faktur_nomor}</div>
+                                  <div className="small fw-bold text-dark font-monospace">{item.faktur_nomor}</div>
                                   <div className="small text-muted">{formatDateIndo(item.faktur_tanggal)}</div>
                                 </td>
                                 <td>

@@ -69,6 +69,7 @@ export async function initDb() {
       items JSON,
       tanggal_dokumen DATE,
       kota_dokumen VARCHAR(100) DEFAULT 'Jakarta',
+      ppn_manual DECIMAL(15, 2),
       penandatangan VARCHAR(255),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -85,8 +86,12 @@ export async function initDb() {
       ALTER TABLE nota_pajak 
       ADD COLUMN IF NOT EXISTS kota_dokumen VARCHAR(100) DEFAULT 'Jakarta'
     `);
+    await db.execute(`
+      ALTER TABLE nota_pajak 
+      ADD COLUMN IF NOT EXISTS ppn_manual DECIMAL(15, 2)
+    `);
   } catch (error) {
     // If IF NOT EXISTS is not supported (standard MySQL), it might throw error if column exists
-    console.log('updated_at/kota_dokumen column check/add');
+    console.log('updated_at/kota_dokumen/ppn_manual column check/add');
   }
 }

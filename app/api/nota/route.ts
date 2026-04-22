@@ -66,13 +66,43 @@ export async function GET(request: Request) {
 
     query += ` ORDER BY updated_at DESC LIMIT ${limit} OFFSET ${offset}`;
     
-    // Using .query instead of .execute because many MySQL drivers/proxies 
-    // have issues with placeholders in LIMIT/OFFSET clauses
+    // Aggregation query for totals
+    let totalsQuery = 'SELECT SUM(t.total_amount) as grand_total, SUM(t.total_ppn) as grand_ppn FROM (SELECT nomor, CAST(JSON_EXTRACT(items, "$[*].amount") AS SIGNED) as total_amount, 0 as total_ppn FROM nota_pajak) as t';
+    // Actually, items is a JSON array, SUM on JSON_EXTRACT might be tricky in pure MySQL depending on version.
+    // Better: let's just sum the stored values if we had them, OR we can calculate in JS after fetching ALL if we really wanted to.
+    // BUT since we store items as JSON, a better way is to iterate over the items in the JS layer for the results being returned.
+    // However, the user wants "Total for the filter".
+    
+    // Let's keep it simple: fetch the rows and count first.
+    // For totals of the WHOLE matched set, I'd need a more complex query or a structured schema.
+    // Given the current schema, let's just calculate totals for the current page and provide a placeholder for "Full Set Totals".
+    
     const [rows]: any = await db.query(query, params);
     const [countRows]: any = await db.query(countQuery, countParams);
     
     const total = countRows[0].total;
     const totalPages = Math.ceil(total / limit);
+
+    // Aggregation query for totals (summing DPP and PPN)
+    // Note: We need to parse the JSON items to sum amounts. 
+    // In MySQL, we can use JSON_TABLE or just calculate in JS if performance allows.
+    // For simplicity and accuracy with the current JSON schema, let's fetch IDs matching the filter first, 
+    // but calculating grand totals on JSON items in MySQL is version-dependent.
+    // Let's do a trick: fetch all matching amounts and calculate in JS for the grand totals.
+    // (This is okay for moderate datasets, e.g. < 10k records)
+    
+    const [allMatchingRows]: any = await db.query(`SELECT items, ppn_manual FROM nota_pajak ${search ? ' WHERE nomor LIKE ? OR faktur_nomor LIKE ? OR penerima_name LIKE ?' : ''}`, search ? [params[0], params[1], params[2]] : []);
+    
+    let grandTotalDPP = 0;
+    let grandTotalPPN = 0;
+    
+    allMatchingRows.forEach((item: any) => {
+      const items = typeof item.items === 'string' ? JSON.parse(item.items) : item.items;
+      const dpp = items.reduce((sum: number, i: any) => sum + i.amount, 0);
+      const ppn = item.ppn_manual ? Number(item.ppn_manual) : Math.floor(dpp * 0.11);
+      grandTotalDPP += dpp;
+      grandTotalPPN += ppn;
+    });
 
     return NextResponse.json({
       data: rows,
@@ -80,7 +110,9 @@ export async function GET(request: Request) {
         total,
         page,
         limit,
-        totalPages
+        totalPages,
+        grandTotalDPP,
+        grandTotalPPN
       }
     });
   } catch (error: any) {
@@ -103,8 +135,8 @@ export async function POST(request: Request) {
         nomor, faktur_nomor, faktur_tanggal, 
         penerima_name, penerima_address, penerima_npwp,
         pemberi_name, pemberi_address, pemberi_npwp,
-        items, tanggal_dokumen, kota_dokumen, penandatangan
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        items, tanggal_dokumen, kota_dokumen, ppn_manual, penandatangan
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.nomor,
         data.fakturNomor,
@@ -118,6 +150,7 @@ export async function POST(request: Request) {
         JSON.stringify(data.items),
         tanggalDokumen,
         data.kotaDokumen || 'Jakarta',
+        data.ppnManual || null,
         data.penandatangan
       ]
     );
@@ -144,7 +177,7 @@ export async function PUT(request: Request) {
         nomor = ?, faktur_nomor = ?, faktur_tanggal = ?, 
         penerima_name = ?, penerima_address = ?, penerima_npwp = ?,
         pemberi_name = ?, pemberi_address = ?, pemberi_npwp = ?,
-        items = ?, tanggal_dokumen = ?, kota_dokumen = ?, penandatangan = ?,
+        items = ?, tanggal_dokumen = ?, kota_dokumen = ?, ppn_manual = ?, penandatangan = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
@@ -160,6 +193,7 @@ export async function PUT(request: Request) {
         JSON.stringify(data.items),
         tanggalDokumen,
         data.kotaDokumen || 'Jakarta',
+        data.ppnManual || null,
         data.penandatangan,
         id
       ]
