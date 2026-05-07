@@ -145,6 +145,53 @@ const renderNPWP = (npwp: string) => {
   );
 };
 
+const SUPPORTED_UPLOAD_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'application/pdf'
+]);
+
+const normalizeUploadMimeType = (file: File) => {
+  if (file.type) return file.type;
+
+  const fileName = file.name.toLowerCase();
+  if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) return 'image/jpeg';
+  if (fileName.endsWith('.png')) return 'image/png';
+  if (fileName.endsWith('.webp')) return 'image/webp';
+  if (fileName.endsWith('.pdf')) return 'application/pdf';
+  return '';
+};
+
+const cleanModelJsonResponse = (rawText: string) => {
+  return rawText
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+};
+
+const parseExtractedAmount = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.round(value);
+  }
+
+  if (typeof value === 'string') {
+    const numeric = Number(value.replace(/[^\d.-]/g, ''));
+    return Number.isFinite(numeric) ? Math.round(numeric) : 0;
+  }
+
+  return 0;
+};
+
+const buildExtractionPrompt = (mimeType: string) => {
+  const sourceLabel = mimeType === 'application/pdf' ? 'dokumen PDF Faktur Pajak' : 'gambar Faktur Pajak';
+
+  return `Anda adalah pakar pajak Indonesia. Ekstrak data dari ${sourceLabel} ini dan kembalikan dalam format JSON murni tanpa markdown, tanpa penjelasan, dan tanpa code fence. Pastikan NPWP berupa deretan angka 15 digit. Jika nominal menggunakan pemisah ribuan atau format Rupiah, ubah menjadi angka biasa. Untuk items, kembalikan array objek dengan description dan amount numerik.`;
+};
+
 export default function Home() {
   const [data, setData] = useState<NotaData>(initialData);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -490,33 +537,64 @@ export default function Home() {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
+
+    const mimeType = normalizeUploadMimeType(file);
+
+    if (!process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
+      setUploadError('Fitur upload belum bisa dipakai karena Gemini API key belum dikonfigurasi.');
+      input.value = '';
+      return;
+    }
+
+    if (!mimeType || !SUPPORTED_UPLOAD_MIME_TYPES.has(mimeType)) {
+      setUploadError('Format file belum didukung. Gunakan JPG, PNG, WEBP, atau PDF.');
+      input.value = '';
+      return;
+    }
 
     setIsExtracting(true);
     setUploadError(null);
 
     try {
       const reader = new FileReader();
+      reader.onerror = () => {
+        setIsExtracting(false);
+        setUploadError('Gagal membaca file yang diunggah. Coba pilih file lain.');
+        input.value = '';
+      };
+
       reader.onload = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
+        if (typeof reader.result !== 'string') {
+          setIsExtracting(false);
+          setUploadError('Format file tidak dapat diproses.');
+          input.value = '';
+          return;
+        }
+
+        const base64Data = reader.result.split(',')[1];
+
+        if (!base64Data) {
+          setIsExtracting(false);
+          setUploadError('Isi file tidak terbaca. Coba unggah ulang dokumen.');
+          input.value = '';
+          return;
+        }
         
         try {
           const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: {
-              parts: [
-                {
-                  text: "Anda adalah pakar pajak Indonesia. Ekstrak data dari gambar Faktur Pajak ini dan kembalikan dalam format JSON murni. Pastikan NPWP adalah deretan angka (15 digit). Item harus berisi deskripsi lengkap dan nominal angka tanpa tanda pemisah di JSON."
-                },
-                {
-                  inlineData: {
-                    data: base64Data,
-                    mimeType: file.type
-                  }
+            model: "gemini-2.5-flash",
+            contents: [
+              buildExtractionPrompt(mimeType),
+              {
+                inlineData: {
+                  data: base64Data,
+                  mimeType
                 }
-              ]
-            },
+              }
+            ],
             config: {
               responseMimeType: "application/json",
               responseSchema: {
@@ -549,7 +627,25 @@ export default function Home() {
             }
           });
 
-          const extracted: any = JSON.parse(response.text);
+          const rawResponseText = response.text?.trim();
+          if (!rawResponseText) {
+            throw new Error('EMPTY_MODEL_RESPONSE');
+          }
+
+          const extracted: any = JSON.parse(cleanModelJsonResponse(rawResponseText));
+          const extractedItems = Array.isArray(extracted.items)
+            ? extracted.items
+                .map((it: any) => ({
+                  id: Math.random().toString(36).substr(2, 9),
+                  description: String(it?.description || '').trim(),
+                  amount: parseExtractedAmount(it?.amount)
+                }))
+                .filter((it: TaxItem) => it.description || it.amount > 0)
+            : [];
+
+          if (!extracted.fakturNomor && !extracted.penerimaName && extractedItems.length === 0) {
+            throw new Error('NO_DATA_EXTRACTED');
+          }
           
           setData(prev => ({
             ...prev,
@@ -559,19 +655,15 @@ export default function Home() {
             penerima: {
               name: extracted.penerimaName || prev.penerima.name,
               address: extracted.penerimaAddress || prev.penerima.address,
-              npwp: (extracted.penerimaNpwp || '').replace(/\D/g, '').slice(0, 15)
+              npwp: ((extracted.penerimaNpwp || prev.penerima.npwp) as string).replace(/\D/g, '').slice(0, 15)
             },
             pemberi: {
               name: extracted.pemberiName || prev.pemberi.name,
               address: extracted.pemberiAddress || prev.pemberi.address,
-              npwp: (extracted.pemberiNpwp || '').replace(/\D/g, '').slice(0, 15)
+              npwp: ((extracted.pemberiNpwp || prev.pemberi.npwp) as string).replace(/\D/g, '').slice(0, 15)
             },
             kotaDokumen: extracted.kotaDokumen || prev.kotaDokumen,
-            items: extracted.items.map((it: any) => ({
-              id: Math.random().toString(36).substr(2, 9),
-              description: it.description,
-              amount: it.amount
-            }))
+            items: extractedItems.length > 0 ? extractedItems : prev.items
           }));
 
           setUploadSuccess(true);
@@ -579,15 +671,30 @@ export default function Home() {
 
         } catch (err: any) {
           console.error("Gemini Error:", err);
-          setUploadError("Gagal menganalisis dokumen. Gunakan gambar faktur yang jelas.");
+          const status = err?.status;
+          const message = String(err?.message || '').toLowerCase();
+
+          if (status === 401 || status === 403 || message.includes('api key') || message.includes('permission')) {
+            setUploadError('Gagal mengakses layanan analisis. Periksa konfigurasi Gemini API key.');
+          } else if (status === 413 || message.includes('too large')) {
+            setUploadError('Ukuran file terlalu besar untuk dianalisis. Coba kompres atau gunakan file yang lebih kecil.');
+          } else if (message.includes('empty_model_response') || message.includes('no_data_extracted')) {
+            setUploadError('Dokumen berhasil diunggah, tetapi data faktur belum terbaca. Coba gunakan file yang lebih jelas atau isi manual sebagian field.');
+          } else if (mimeType === 'application/pdf') {
+            setUploadError('PDF belum berhasil dianalisis. Coba gunakan PDF yang jelas atau ubah halaman faktur menjadi gambar JPG/PNG.');
+          } else {
+            setUploadError('Gagal menganalisis dokumen. Gunakan gambar faktur yang jelas.');
+          }
         } finally {
           setIsExtracting(false);
+          input.value = '';
         }
       };
       reader.readAsDataURL(file);
     } catch (err) {
       setIsExtracting(false);
       setUploadError("Gagal membaca file.");
+      input.value = '';
     }
   };
 
