@@ -41,6 +41,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY as string });
 const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
 // Types
 interface TaxItem {
@@ -73,7 +74,7 @@ interface NotaData {
 const initialData: NotaData = {
   nomor: '880/RT/02/2025-025/RT/02/2025',
   fakturNomor: '030.007-24.80471793',
-  fakturTanggal: '2024-08-16',
+  fakturTanggal: '16-Aug-2024',
   penerima: {
     name: 'PT PERTAMINA HULU ENERGI OFFSHORE NORTH WEST JAVA',
     address: 'GEDUNG PHE TOWER LT 3, JL TB SIMATUPANG KAV 99 Blok 00 No.00 RT:000 RW:000 Kel.KEBAGUSAN Kec.PASAR MINGGU Kota/Kab.JAKARTA SELATAN DKI JAKARTA 12520',
@@ -91,7 +92,7 @@ const initialData: NotaData = {
       amount: 90004085
     }
   ],
-  tanggalDokumen: '2025-02-13',
+  tanggalDokumen: '13-Feb-2025',
   kotaDokumen: 'Jakarta',
   ppnManual: undefined,
   penandatangan: 'PT Pertamina Hulu Energi ONWJ',
@@ -110,7 +111,9 @@ const formatCurrency = (amount: number) => {
 
 const formatDateIndo = (dateStr: string) => {
   if (!dateStr) return '';
-  const date = new Date(dateStr);
+  const isoDate = normalizeDateToISO(dateStr);
+  if (!isoDate) return dateStr;
+  const date = new Date(isoDate);
   const months = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
@@ -153,6 +156,8 @@ const SUPPORTED_UPLOAD_MIME_TYPES = new Set([
   'application/pdf'
 ]);
 
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+
 const normalizeUploadMimeType = (file: File) => {
   if (file.type) return file.type;
 
@@ -186,10 +191,87 @@ const parseExtractedAmount = (value: unknown) => {
   return 0;
 };
 
+const formatISOToDisplayDate = (isoDate: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return '';
+
+  const [year, month, day] = isoDate.split('-');
+  const monthIndex = Number(month) - 1;
+  if (monthIndex < 0 || monthIndex > 11) return '';
+
+  return `${day}-${MONTH_ABBR[monthIndex]}-${year}`;
+};
+
+const normalizeDateToISO = (value: unknown) => {
+  if (typeof value !== 'string') return '';
+
+  const raw = value.trim();
+  if (!raw) return '';
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const normalized = raw.replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const displayMatch = normalized.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  if (displayMatch) {
+    const [, day, monthAbbr, year] = displayMatch;
+    const monthIndex = MONTH_ABBR.findIndex((month) => month.toLowerCase() === monthAbbr.toLowerCase());
+    if (monthIndex >= 0) {
+      return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+  }
+
+  const lowerNormalized = normalized.toLowerCase();
+  const monthMap: Record<string, string> = {
+    januari: '01', februari: '02', maret: '03', april: '04', mei: '05', juni: '06',
+    juli: '07', agustus: '08', september: '09', oktober: '10', november: '11', desember: '12'
+  };
+
+  const indoMatch = lowerNormalized.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/);
+  if (indoMatch) {
+    const [, day, monthName, year] = indoMatch;
+    const month = monthMap[monthName];
+    if (month) {
+      return `${year}-${month}-${day.padStart(2, '0')}`;
+    }
+  }
+
+  const slashMatch = lowerNormalized.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (slashMatch) {
+    let [, first, second, year] = slashMatch;
+    if (year.length === 2) {
+      year = `20${year}`;
+    }
+
+    return `${year}-${second.padStart(2, '0')}-${first.padStart(2, '0')}`;
+  }
+
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+
+  return '';
+};
+
+const sanitizeExtractedNpwp = (value: unknown, fallback: string) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length >= 15) return digits.slice(0, 15);
+
+  const fallbackDigits = fallback.replace(/\D/g, '').slice(0, 15);
+  return fallbackDigits;
+};
+
+const normalizeExtractedDate = (value: unknown, fallback = '') => {
+  const isoDate = normalizeDateToISO(value);
+  if (!isoDate) return fallback;
+
+  return formatISOToDisplayDate(isoDate) || fallback;
+};
+
 const buildExtractionPrompt = (mimeType: string) => {
   const sourceLabel = mimeType === 'application/pdf' ? 'dokumen PDF Faktur Pajak' : 'gambar Faktur Pajak';
 
-  return `Anda adalah pakar pajak Indonesia. Ekstrak data dari ${sourceLabel} ini dan kembalikan dalam format JSON murni tanpa markdown, tanpa penjelasan, dan tanpa code fence. Pastikan NPWP berupa deretan angka 15 digit. Jika nominal menggunakan pemisah ribuan atau format Rupiah, ubah menjadi angka biasa. Untuk items, kembalikan array objek dengan description dan amount numerik.`;
+  return `Anda adalah pakar pajak Indonesia. Ekstrak data dari ${sourceLabel} ini dan kembalikan dalam format JSON murni tanpa markdown, tanpa penjelasan, dan tanpa code fence. Pastikan NPWP berupa deretan angka 15 digit. Jika menemukan tanggal, prioritaskan format DD-MMM-YYYY seperti 07-May-2026. Jika nominal menggunakan pemisah ribuan atau format Rupiah, ubah menjadi angka biasa. Untuk items, kembalikan array objek dengan description dan amount numerik. Jika suatu field tidak ditemukan, isi string kosong atau array kosong.`;
 };
 
 export default function Home() {
@@ -407,7 +489,7 @@ export default function Home() {
     const formattedItem: NotaData = {
       nomor: item.nomor,
       fakturNomor: item.faktur_nomor,
-      fakturTanggal: item.faktur_tanggal ? new Date(item.faktur_tanggal).toISOString().split('T')[0] : '',
+      fakturTanggal: item.faktur_tanggal ? formatISOToDisplayDate(new Date(item.faktur_tanggal).toISOString().split('T')[0]) : '',
       penerima: {
         name: item.penerima_name,
         address: item.penerima_address,
@@ -419,7 +501,7 @@ export default function Home() {
         npwp: item.pemberi_npwp
       },
       items: typeof item.items === 'string' ? JSON.parse(item.items) : item.items,
-      tanggalDokumen: item.tanggal_dokumen ? new Date(item.tanggal_dokumen).toISOString().split('T')[0] : '',
+      tanggalDokumen: item.tanggal_dokumen ? formatISOToDisplayDate(new Date(item.tanggal_dokumen).toISOString().split('T')[0]) : '',
       kotaDokumen: item.kota_dokumen || 'Jakarta',
       ppnManual: item.ppn_manual || undefined,
       penandatangan: item.penandatangan,
@@ -555,6 +637,12 @@ export default function Home() {
       return;
     }
 
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      setUploadError('Ukuran file maksimal 10 MB. Coba kompres file atau gunakan halaman faktur yang lebih ringan.');
+      input.value = '';
+      return;
+    }
+
     setIsExtracting(true);
     setUploadError(null);
 
@@ -609,6 +697,7 @@ export default function Home() {
                   pemberiName: { type: Type.STRING },
                   pemberiAddress: { type: Type.STRING },
                   pemberiNpwp: { type: Type.STRING },
+                  tanggalDokumen: { type: Type.STRING },
                   kotaDokumen: { type: Type.STRING },
                   items: {
                     type: Type.ARRAY,
@@ -651,18 +740,19 @@ export default function Home() {
             ...prev,
             nomor: extracted.nomorNota || prev.nomor,
             fakturNomor: extracted.fakturNomor || prev.fakturNomor,
-            fakturTanggal: extracted.fakturTanggal || prev.fakturTanggal,
+            fakturTanggal: normalizeExtractedDate(extracted.fakturTanggal, prev.fakturTanggal),
             penerima: {
               name: extracted.penerimaName || prev.penerima.name,
               address: extracted.penerimaAddress || prev.penerima.address,
-              npwp: ((extracted.penerimaNpwp || prev.penerima.npwp) as string).replace(/\D/g, '').slice(0, 15)
+              npwp: sanitizeExtractedNpwp(extracted.penerimaNpwp, prev.penerima.npwp)
             },
             pemberi: {
               name: extracted.pemberiName || prev.pemberi.name,
               address: extracted.pemberiAddress || prev.pemberi.address,
-              npwp: ((extracted.pemberiNpwp || prev.pemberi.npwp) as string).replace(/\D/g, '').slice(0, 15)
+              npwp: sanitizeExtractedNpwp(extracted.pemberiNpwp, prev.pemberi.npwp)
             },
-            kotaDokumen: extracted.kotaDokumen || prev.kotaDokumen,
+            tanggalDokumen: normalizeExtractedDate(extracted.tanggalDokumen, prev.tanggalDokumen),
+            kotaDokumen: String(extracted.kotaDokumen || prev.kotaDokumen).trim() || prev.kotaDokumen,
             items: extractedItems.length > 0 ? extractedItems : prev.items
           }));
 
@@ -1066,8 +1156,8 @@ export default function Home() {
                         ) : (
                           <div className="d-flex flex-column align-items-center gap-1 py-1">
                             <Upload className="text-primary mb-2" size={32} />
-                            <span className="fw-bold text-dark">Klik untuk Unggah Gambar</span>
-                            <span className="text-muted small">AI akan mengisi form otomatis dari Faktur Pajak Anda</span>
+                            <span className="fw-bold text-dark">Klik untuk Unggah File Faktur</span>
+                            <span className="text-muted small">Dukung JPG, PNG, WEBP, atau PDF untuk mengisi form otomatis</span>
                           </div>
                         )}
                       </label>
@@ -1106,8 +1196,8 @@ export default function Home() {
                     <Form.Label className="small fw-bold">Tanggal Faktur</Form.Label>
                     <Form.Control 
                       type="date" 
-                      value={data.fakturTanggal}
-                      onChange={(e) => setData({...data, fakturTanggal: e.target.value})}
+                      value={normalizeDateToISO(data.fakturTanggal)}
+                      onChange={(e) => setData({...data, fakturTanggal: formatISOToDisplayDate(e.target.value) || ''})}
                     />
                   </Col>
                 </Row>
@@ -1256,8 +1346,8 @@ export default function Home() {
                     <Form.Label className="small fw-bold">Tanggal Nota</Form.Label>
                     <Form.Control 
                       type="date" 
-                      value={data.tanggalDokumen}
-                      onChange={(e) => setData({...data, tanggalDokumen: e.target.value})}
+                      value={normalizeDateToISO(data.tanggalDokumen)}
+                      onChange={(e) => setData({...data, tanggalDokumen: formatISOToDisplayDate(e.target.value) || ''})}
                     />
                   </Col>
                   <Col md={12}>
