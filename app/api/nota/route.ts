@@ -10,6 +10,20 @@ function parseIndoDateToISO(dateStr: any): string | null {
   // If it's already YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(cleanStr)) return cleanStr;
 
+  const monthAbbr: Record<string, string> = {
+    'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+    'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+  };
+
+  const displayMatch = cleanStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  if (displayMatch) {
+    const [, day, monthName, year] = displayMatch;
+    const month = monthAbbr[monthName.toLowerCase()];
+    if (month) {
+      return `${year}-${month}-${day.padStart(2, '0')}`;
+    }
+  }
+
   const months: Record<string, string> = {
     'januari': '01', 'februari': '02', 'maret': '03', 'april': '04', 'mei': '05', 'juni': '06',
     'juli': '07', 'agustus': '08', 'september': '09', 'oktober': '10', 'november': '11', 'desember': '12'
