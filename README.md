@@ -1,11 +1,39 @@
 # Nota Pembatalan Pajak Generator
 
+<p align="center">
+   <strong>Generator nota pembatalan pajak internal</strong><br />
+   Aman, cepat, siap cetak, dan terintegrasi dengan riwayat data.
+</p>
+
+<p align="center">
+   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-black" />
+   <img alt="React" src="https://img.shields.io/badge/React-19-149eca" />
+   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.8-3178c6" />
+   <img alt="MySQL" src="https://img.shields.io/badge/Database-MySQL%20%2F%20TiDB-4479a1" />
+   <img alt="Security" src="https://img.shields.io/badge/Security-2FA%20%2B%20Idle%20Timeout-success" />
+</p>
+
 Aplikasi internal berbasis **Next.js** untuk membantu proses pembuatan **Nota Pembatalan Pajak** secara lebih cepat, konsisten, dan siap cetak. Aplikasi ini menggabungkan **autentikasi berlapis**, **input manual atau ekstraksi AI dari faktur**, **preview dokumen real-time**, serta **penyimpanan riwayat ke database**.
 
 README ini disusun untuk menjelaskan **alur aplikasi**, **fitur utama**, **komponen penting**, dan **cara menjalankan project** dengan aman.
 
 > **Catatan keamanan**  
 > Dokumen ini sengaja **tidak menampilkan nilai sensitif** seperti password, API key, secret TOTP, username database, host database, email internal, atau kredensial lain. Gunakan placeholder atau environment variable saat konfigurasi.
+
+## Daftar isi
+
+- [Ringkasan cepat](#ringkasan-cepat)
+- [Diagram alur sistem](#diagram-alur-sistem)
+- [Gambaran singkat](#gambaran-singkat)
+- [Nilai bisnis aplikasi](#nilai-bisnis-aplikasi)
+- [Alur aplikasi](#alur-aplikasi)
+- [Struktur file yang berperan di flow utama](#struktur-file-yang-berperan-di-flow-utama)
+- [Alur data antarkomponen](#alur-data-antarkomponen)
+- [Environment variables](#environment-variables)
+- [Cara menjalankan project](#cara-menjalankan-project)
+- [Skenario penggunaan singkat](#skenario-penggunaan-singkat)
+- [Ringkasan endpoint API](#ringkasan-endpoint-api)
+- [Catatan penting](#catatan-penting)
 
 ## Ringkasan cepat
 
