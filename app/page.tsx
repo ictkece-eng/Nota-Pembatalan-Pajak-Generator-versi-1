@@ -157,6 +157,12 @@ const SUPPORTED_UPLOAD_MIME_TYPES = new Set([
 ]);
 
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_PDF_PAGES_TO_ANALYZE = 3;
+
+type UploadInlinePart = {
+  data: string;
+  mimeType: string;
+};
 
 const normalizeUploadMimeType = (file: File) => {
   if (file.type) return file.type;
@@ -167,6 +173,93 @@ const normalizeUploadMimeType = (file: File) => {
   if (fileName.endsWith('.webp')) return 'image/webp';
   if (fileName.endsWith('.pdf')) return 'application/pdf';
   return '';
+};
+
+const readBlobAsDataUrl = (blob: Blob) => {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('INVALID_FILE_RESULT'));
+      }
+    };
+    reader.onerror = () => reject(new Error('FILE_READ_ERROR'));
+    reader.readAsDataURL(blob);
+  });
+};
+
+const convertImageFileToInlinePart = async (file: File, mimeType: string): Promise<UploadInlinePart> => {
+  const dataUrl = await readBlobAsDataUrl(file);
+  const base64Data = dataUrl.split(',')[1];
+
+  if (!base64Data) {
+    throw new Error('EMPTY_FILE_DATA');
+  }
+
+  return {
+    data: base64Data,
+    mimeType
+  };
+};
+
+const convertPdfFileToImageParts = async (file: File): Promise<UploadInlinePart[]> => {
+  const pdfjsLib = await import('pdfjs-dist/legacy/webpack.mjs');
+  const pdfData = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = pdfjsLib.getDocument({
+    data: pdfData,
+    useWorkerFetch: false,
+    isEvalSupported: false,
+    enableXfa: false
+  });
+
+  const pdfDocument = await loadingTask.promise;
+
+  try {
+    const pageCount = Math.min(pdfDocument.numPages, MAX_PDF_PAGES_TO_ANALYZE);
+    const imageParts: UploadInlinePart[] = [];
+
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+      const page = await pdfDocument.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+
+      if (!context) {
+        throw new Error('PDF_RENDER_CONTEXT_ERROR');
+      }
+
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+
+      await page.render({
+        canvasContext: context,
+        viewport
+      }).promise;
+
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64Data = dataUrl.split(',')[1];
+
+      if (base64Data) {
+        imageParts.push({
+          data: base64Data,
+          mimeType: 'image/png'
+        });
+      }
+
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+
+    if (imageParts.length === 0) {
+      throw new Error('PDF_RENDER_EMPTY');
+    }
+
+    return imageParts;
+  } finally {
+    await pdfDocument.destroy();
+  }
 };
 
 const cleanModelJsonResponse = (rawText: string) => {
@@ -647,143 +740,123 @@ export default function Home() {
     setUploadError(null);
 
     try {
-      const reader = new FileReader();
-      reader.onerror = () => {
-        setIsExtracting(false);
-        setUploadError('Gagal membaca file yang diunggah. Coba pilih file lain.');
-        input.value = '';
-      };
+      const uploadParts = mimeType === 'application/pdf'
+        ? await convertPdfFileToImageParts(file)
+        : [await convertImageFileToInlinePart(file, mimeType)];
 
-      reader.onload = async () => {
-        if (typeof reader.result !== 'string') {
-          setIsExtracting(false);
-          setUploadError('Format file tidak dapat diproses.');
-          input.value = '';
-          return;
-        }
-
-        const base64Data = reader.result.split(',')[1];
-
-        if (!base64Data) {
-          setIsExtracting(false);
-          setUploadError('Isi file tidak terbaca. Coba unggah ulang dokumen.');
-          input.value = '';
-          return;
-        }
-        
-        try {
-          const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [
-              buildExtractionPrompt(mimeType),
-              {
-                inlineData: {
-                  data: base64Data,
-                  mimeType
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          buildExtractionPrompt(mimeType),
+          ...uploadParts.map((part) => ({
+            inlineData: {
+              data: part.data,
+              mimeType: part.mimeType
+            }
+          }))
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              nomorNota: { type: Type.STRING },
+              fakturNomor: { type: Type.STRING },
+              fakturTanggal: { type: Type.STRING },
+              penerimaName: { type: Type.STRING },
+              penerimaAddress: { type: Type.STRING },
+              penerimaNpwp: { type: Type.STRING },
+              pemberiName: { type: Type.STRING },
+              pemberiAddress: { type: Type.STRING },
+              pemberiNpwp: { type: Type.STRING },
+              tanggalDokumen: { type: Type.STRING },
+              kotaDokumen: { type: Type.STRING },
+              items: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    description: { type: Type.STRING },
+                    amount: { type: Type.NUMBER }
+                  },
+                  required: ["description", "amount"]
                 }
               }
-            ],
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  nomorNota: { type: Type.STRING },
-                  fakturNomor: { type: Type.STRING },
-                  fakturTanggal: { type: Type.STRING },
-                  penerimaName: { type: Type.STRING },
-                  penerimaAddress: { type: Type.STRING },
-                  penerimaNpwp: { type: Type.STRING },
-                  pemberiName: { type: Type.STRING },
-                  pemberiAddress: { type: Type.STRING },
-                  pemberiNpwp: { type: Type.STRING },
-                  tanggalDokumen: { type: Type.STRING },
-                  kotaDokumen: { type: Type.STRING },
-                  items: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        description: { type: Type.STRING },
-                        amount: { type: Type.NUMBER }
-                      },
-                      required: ["description", "amount"]
-                    }
-                  }
-                },
-                required: ["fakturNomor", "fakturTanggal", "penerimaName", "penerimaNpwp", "items"]
-              }
-            }
-          });
-
-          const rawResponseText = response.text?.trim();
-          if (!rawResponseText) {
-            throw new Error('EMPTY_MODEL_RESPONSE');
-          }
-
-          const extracted: any = JSON.parse(cleanModelJsonResponse(rawResponseText));
-          const extractedItems = Array.isArray(extracted.items)
-            ? extracted.items
-                .map((it: any) => ({
-                  id: Math.random().toString(36).substr(2, 9),
-                  description: String(it?.description || '').trim(),
-                  amount: parseExtractedAmount(it?.amount)
-                }))
-                .filter((it: TaxItem) => it.description || it.amount > 0)
-            : [];
-
-          if (!extracted.fakturNomor && !extracted.penerimaName && extractedItems.length === 0) {
-            throw new Error('NO_DATA_EXTRACTED');
-          }
-          
-          setData(prev => ({
-            ...prev,
-            nomor: extracted.nomorNota || prev.nomor,
-            fakturNomor: extracted.fakturNomor || prev.fakturNomor,
-            fakturTanggal: normalizeExtractedDate(extracted.fakturTanggal, prev.fakturTanggal),
-            penerima: {
-              name: extracted.penerimaName || prev.penerima.name,
-              address: extracted.penerimaAddress || prev.penerima.address,
-              npwp: sanitizeExtractedNpwp(extracted.penerimaNpwp, prev.penerima.npwp)
             },
-            pemberi: {
-              name: extracted.pemberiName || prev.pemberi.name,
-              address: extracted.pemberiAddress || prev.pemberi.address,
-              npwp: sanitizeExtractedNpwp(extracted.pemberiNpwp, prev.pemberi.npwp)
-            },
-            tanggalDokumen: normalizeExtractedDate(extracted.tanggalDokumen, prev.tanggalDokumen),
-            kotaDokumen: String(extracted.kotaDokumen || prev.kotaDokumen).trim() || prev.kotaDokumen,
-            items: extractedItems.length > 0 ? extractedItems : prev.items
-          }));
-
-          setUploadSuccess(true);
-          setTimeout(() => setUploadSuccess(false), 4000);
-
-        } catch (err: any) {
-          console.error("Gemini Error:", err);
-          const status = err?.status;
-          const message = String(err?.message || '').toLowerCase();
-
-          if (status === 401 || status === 403 || message.includes('api key') || message.includes('permission')) {
-            setUploadError('Gagal mengakses layanan analisis. Periksa konfigurasi Gemini API key.');
-          } else if (status === 413 || message.includes('too large')) {
-            setUploadError('Ukuran file terlalu besar untuk dianalisis. Coba kompres atau gunakan file yang lebih kecil.');
-          } else if (message.includes('empty_model_response') || message.includes('no_data_extracted')) {
-            setUploadError('Dokumen berhasil diunggah, tetapi data faktur belum terbaca. Coba gunakan file yang lebih jelas atau isi manual sebagian field.');
-          } else if (mimeType === 'application/pdf') {
-            setUploadError('PDF belum berhasil dianalisis. Coba gunakan PDF yang jelas atau ubah halaman faktur menjadi gambar JPG/PNG.');
-          } else {
-            setUploadError('Gagal menganalisis dokumen. Gunakan gambar faktur yang jelas.');
+            required: ["fakturNomor", "fakturTanggal", "penerimaName", "penerimaNpwp", "items"]
           }
-        } finally {
-          setIsExtracting(false);
-          input.value = '';
         }
-      };
-      reader.readAsDataURL(file);
+      });
+
+      const rawResponseText = response.text?.trim();
+      if (!rawResponseText) {
+        throw new Error('EMPTY_MODEL_RESPONSE');
+      }
+
+      const extracted: any = JSON.parse(cleanModelJsonResponse(rawResponseText));
+      const extractedItems = Array.isArray(extracted.items)
+        ? extracted.items
+            .map((it: any) => ({
+              id: Math.random().toString(36).substr(2, 9),
+              description: String(it?.description || '').trim(),
+              amount: parseExtractedAmount(it?.amount)
+            }))
+            .filter((it: TaxItem) => it.description || it.amount > 0)
+        : [];
+
+      if (!extracted.fakturNomor && !extracted.penerimaName && extractedItems.length === 0) {
+        throw new Error('NO_DATA_EXTRACTED');
+      }
+      
+      setData(prev => ({
+        ...prev,
+        nomor: extracted.nomorNota || prev.nomor,
+        fakturNomor: extracted.fakturNomor || prev.fakturNomor,
+        fakturTanggal: normalizeExtractedDate(extracted.fakturTanggal, prev.fakturTanggal),
+        penerima: {
+          name: extracted.penerimaName || prev.penerima.name,
+          address: extracted.penerimaAddress || prev.penerima.address,
+          npwp: sanitizeExtractedNpwp(extracted.penerimaNpwp, prev.penerima.npwp)
+        },
+        pemberi: {
+          name: extracted.pemberiName || prev.pemberi.name,
+          address: extracted.pemberiAddress || prev.pemberi.address,
+          npwp: sanitizeExtractedNpwp(extracted.pemberiNpwp, prev.pemberi.npwp)
+        },
+        tanggalDokumen: normalizeExtractedDate(extracted.tanggalDokumen, prev.tanggalDokumen),
+        kotaDokumen: String(extracted.kotaDokumen || prev.kotaDokumen).trim() || prev.kotaDokumen,
+        items: extractedItems.length > 0 ? extractedItems : prev.items
+      }));
+
+      setUploadSuccess(true);
+      setTimeout(() => setUploadSuccess(false), 4000);
     } catch (err) {
+      console.error("Gemini/PDF Upload Error:", err);
+      const anyErr = err as any;
+      const status = anyErr?.status;
+      const message = String(anyErr?.message || '').toLowerCase();
+
+      if (status === 401 || status === 403 || message.includes('api key') || message.includes('permission')) {
+        setUploadError('Gagal mengakses layanan analisis. Periksa konfigurasi Gemini API key.');
+      } else if (status === 413 || message.includes('too large')) {
+        setUploadError('Ukuran file terlalu besar untuk dianalisis. Coba kompres atau gunakan file yang lebih kecil.');
+      } else if (message.includes('pdf_render') || message.includes('pdf') || message.includes('worker')) {
+        setUploadError('PDF gagal diproses. Coba gunakan PDF lain yang tidak rusak atau export ulang ke PDF standar.');
+      } else if (message.includes('file_read_error') || message.includes('invalid_file_result') || message.includes('empty_file_data')) {
+        setUploadError('Gagal membaca file yang diunggah. Coba pilih file lain.');
+      } else if (message.includes('empty_model_response') || message.includes('no_data_extracted')) {
+        setUploadError('Dokumen berhasil diunggah, tetapi data faktur belum terbaca. Coba gunakan file yang lebih jelas atau isi manual sebagian field.');
+      } else {
+        setUploadError(mimeType === 'application/pdf'
+          ? 'PDF belum berhasil dianalisis. Coba gunakan PDF yang jelas atau export ulang ke PDF standar.'
+          : 'Gagal menganalisis dokumen. Gunakan gambar faktur yang jelas.');
+      }
+
       setIsExtracting(false);
-      setUploadError("Gagal membaca file.");
+      input.value = '';
+      return;
+    } finally {
+      setIsExtracting(false);
       input.value = '';
     }
   };
