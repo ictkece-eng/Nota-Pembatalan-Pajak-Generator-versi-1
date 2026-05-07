@@ -2,6 +2,20 @@ import mysql from 'mysql2/promise';
 
 let pool: mysql.Pool | null = null;
 
+async function addColumnIfMissing(db: mysql.Pool, definition: string) {
+  try {
+    await db.execute(`ALTER TABLE nota_pajak ADD COLUMN ${definition}`);
+  } catch (error: any) {
+    const message = String(error?.message || '').toLowerCase();
+    if (
+      error?.code !== 'ER_DUP_FIELDNAME' &&
+      !message.includes('duplicate column')
+    ) {
+      throw error;
+    }
+  }
+}
+
 export async function getDb() {
   if (!pool) {
     let connectionString = process.env.DATABASE_URL || 'mysql://3cmJDj1dFPpqYxA.root:hBPtj3S977s7dK9Z@gateway01.ap-southeast-1.prod.aws.tidbcloud.com:4000/Billing';
@@ -71,6 +85,8 @@ export async function initDb() {
       kota_dokumen VARCHAR(100) DEFAULT 'Jakarta',
       ppn_manual DECIMAL(15, 2),
       penandatangan VARCHAR(255),
+      nama_penandatangan VARCHAR(255),
+      jabatan_penandatangan VARCHAR(255),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
@@ -78,20 +94,12 @@ export async function initDb() {
 
   // Ensure updated_at column exists for older tables
   try {
-    await db.execute(`
-      ALTER TABLE nota_pajak 
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    `);
-    await db.execute(`
-      ALTER TABLE nota_pajak 
-      ADD COLUMN IF NOT EXISTS kota_dokumen VARCHAR(100) DEFAULT 'Jakarta'
-    `);
-    await db.execute(`
-      ALTER TABLE nota_pajak 
-      ADD COLUMN IF NOT EXISTS ppn_manual DECIMAL(15, 2)
-    `);
+    await addColumnIfMissing(db, 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    await addColumnIfMissing(db, "kota_dokumen VARCHAR(100) DEFAULT 'Jakarta'");
+    await addColumnIfMissing(db, 'ppn_manual DECIMAL(15, 2)');
+    await addColumnIfMissing(db, 'nama_penandatangan VARCHAR(255)');
+    await addColumnIfMissing(db, 'jabatan_penandatangan VARCHAR(255)');
   } catch (error) {
-    // If IF NOT EXISTS is not supported (standard MySQL), it might throw error if column exists
-    console.log('updated_at/kota_dokumen/ppn_manual column check/add');
+    console.log('Failed to ensure nota_pajak columns exist:', error);
   }
 }

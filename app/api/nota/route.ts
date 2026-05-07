@@ -135,8 +135,9 @@ export async function POST(request: Request) {
         nomor, faktur_nomor, faktur_tanggal, 
         penerima_name, penerima_address, penerima_npwp,
         pemberi_name, pemberi_address, pemberi_npwp,
-        items, tanggal_dokumen, kota_dokumen, ppn_manual, penandatangan
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        items, tanggal_dokumen, kota_dokumen, ppn_manual, penandatangan,
+        nama_penandatangan, jabatan_penandatangan
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.nomor,
         data.fakturNomor,
@@ -151,7 +152,9 @@ export async function POST(request: Request) {
         tanggalDokumen,
         data.kotaDokumen || 'Jakarta',
         data.ppnManual || null,
-        data.penandatangan
+        data.penandatangan,
+        data.namaPenandatangan || null,
+        data.jabatanPenandatangan || null
       ]
     );
     
@@ -178,6 +181,7 @@ export async function PUT(request: Request) {
         penerima_name = ?, penerima_address = ?, penerima_npwp = ?,
         pemberi_name = ?, pemberi_address = ?, pemberi_npwp = ?,
         items = ?, tanggal_dokumen = ?, kota_dokumen = ?, ppn_manual = ?, penandatangan = ?,
+        nama_penandatangan = ?, jabatan_penandatangan = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
@@ -195,6 +199,8 @@ export async function PUT(request: Request) {
         data.kotaDokumen || 'Jakarta',
         data.ppnManual || null,
         data.penandatangan,
+        data.namaPenandatangan || null,
+        data.jabatanPenandatangan || null,
         id
       ]
     );

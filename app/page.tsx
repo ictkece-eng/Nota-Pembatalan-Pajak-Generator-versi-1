@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -40,6 +40,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY as string });
+const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
 // Types
 interface TaxItem {
@@ -65,6 +66,8 @@ interface NotaData {
   kotaDokumen: string;
   ppnManual?: number;
   penandatangan: string;
+  namaPenandatangan: string;
+  jabatanPenandatangan: string;
 }
 
 const initialData: NotaData = {
@@ -91,7 +94,9 @@ const initialData: NotaData = {
   tanggalDokumen: '2025-02-13',
   kotaDokumen: 'Jakarta',
   ppnManual: undefined,
-  penandatangan: 'PT Pertamina Hulu Energi ONWJ'
+  penandatangan: 'PT Pertamina Hulu Energi ONWJ',
+  namaPenandatangan: '',
+  jabatanPenandatangan: ''
 };
 
 // Helpers
@@ -173,8 +178,6 @@ export default function Home() {
   const [totpCode, setTotpCode] = useState('');
   const [totpError, setTotpError] = useState(false);
   const [showQR, setShowQR] = useState(false);
-  
-  const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
   
   // Shared TOTP Secret for the Billing Team
   const TOTP_SECRET = process.env.NEXT_PUBLIC_TOTP_SECRET || 'PGASBILLING2026SECRETKEY';
@@ -288,13 +291,7 @@ export default function Home() {
     window.location.href = `mailto:${emails}?subject=${subject}&body=${body}`;
   };
 
-  React.useEffect(() => {
-    if (isAuthenticated && activeTab === 'history') {
-      fetchHistory(currentPage, searchQuery);
-    }
-  }, [activeTab, currentPage, searchQuery]);
-
-  const fetchHistory = async (page = 1, search = '') => {
+  const fetchHistory = useCallback(async (page = 1, search = '') => {
     setIsLoadingHistory(true);
     setHistoryError(null);
     try {
@@ -318,7 +315,13 @@ export default function Home() {
       setIsLoadingHistory(true); // Wait for state updates
       setIsLoadingHistory(false);
     }
-  };
+  }, [historyLimit]);
+
+  React.useEffect(() => {
+    if (isAuthenticated && activeTab === 'history') {
+      fetchHistory(currentPage, searchQuery);
+    }
+  }, [activeTab, currentPage, searchQuery, isAuthenticated, fetchHistory]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -372,7 +375,9 @@ export default function Home() {
       tanggalDokumen: item.tanggal_dokumen ? new Date(item.tanggal_dokumen).toISOString().split('T')[0] : '',
       kotaDokumen: item.kota_dokumen || 'Jakarta',
       ppnManual: item.ppn_manual || undefined,
-      penandatangan: item.penandatangan
+      penandatangan: item.penandatangan,
+      namaPenandatangan: item.nama_penandatangan || '',
+      jabatanPenandatangan: item.jabatan_penandatangan || ''
     };
     setData(formattedItem);
     setActiveTab('generator');
@@ -430,7 +435,7 @@ export default function Home() {
     if (history.length === 0) return;
     
     // Header
-    const headers = ["ID", "Nomor Nota", "Faktur Nomor", "Faktur Tanggal", "Penerima", "Pemberi", "Total DPP", "PPN", "Kota", "Penandatangan", "Tanggal Buat"];
+    const headers = ["ID", "Nomor Nota", "Faktur Nomor", "Faktur Tanggal", "Penerima", "Pemberi", "Total DPP", "PPN", "Kota", "Penandatangan", "Nama Penandatangan", "Jabatan Penandatangan", "Tanggal Buat"];
     
     const rows = history.map(item => {
       const items = typeof item.items === 'string' ? JSON.parse(item.items) : item.items;
@@ -448,6 +453,8 @@ export default function Home() {
         ppn,
         item.kota_dokumen,
         item.penandatangan,
+        item.nama_penandatangan,
+        item.jabatan_penandatangan,
         item.created_at
       ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",");
     });
@@ -1154,6 +1161,24 @@ export default function Home() {
                       onChange={(e) => setData({...data, penandatangan: e.target.value})}
                     />
                   </Col>
+                  <Col md={6}>
+                    <Form.Label className="small fw-bold">Nama</Form.Label>
+                    <Form.Control 
+                      type="text" 
+                      value={data.namaPenandatangan}
+                      onChange={(e) => setData({...data, namaPenandatangan: e.target.value})}
+                      placeholder="Nama penandatangan"
+                    />
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label className="small fw-bold">Jabatan</Form.Label>
+                    <Form.Control 
+                      type="text" 
+                      value={data.jabatanPenandatangan}
+                      onChange={(e) => setData({...data, jabatanPenandatangan: e.target.value})}
+                      placeholder="Jabatan penandatangan"
+                    />
+                  </Col>
                 </Row>
               </Card.Body>
             </Card>
@@ -1282,6 +1307,8 @@ export default function Home() {
                       <p className="mb-1">{data.kotaDokumen}, {formatDateIndo(data.tanggalDokumen)}</p>
                       <p className="fw-bold mb-0">{data.penandatangan}</p>
                       <div style={{ height: '70px' }}></div>
+                      {data.namaPenandatangan && <p className="fw-bold mb-0 text-decoration-underline">{data.namaPenandatangan}</p>}
+                      {data.jabatanPenandatangan && <p className="mb-0">{data.jabatanPenandatangan}</p>}
                     </div>
                   </div>
                 </div>
