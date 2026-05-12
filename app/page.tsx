@@ -931,6 +931,7 @@ export default function Home() {
   );
   const hasSelectedPdfSections = Object.values(pdfExportOptions).some(Boolean);
   const hasSelectedHistoryRows = selectedHistoryIds.length > 0;
+  const hasVisibleHistoryRows = history.length > 0;
   const allVisibleHistorySelected = history.length > 0 && history.every((item) => selectedHistoryIds.includes(item.id));
 
   const handleExportCSV = () => {
@@ -1093,16 +1094,13 @@ export default function Home() {
     }
   };
 
-  const handleExportSelectedHistoryPdf = async () => {
-    if (!hasSelectedHistoryRows || isBulkExportingHistory) return;
-
-    const selectedItems = history.filter((item) => selectedHistoryIds.includes(item.id));
-    if (selectedItems.length === 0) return;
+  const exportHistoryItemsToPdf = async (itemsToExport: any[]) => {
+    if (itemsToExport.length === 0 || isBulkExportingHistory) return;
 
     setIsBulkExportingHistory(true);
 
     try {
-      for (const item of selectedItems) {
+      for (const item of itemsToExport) {
         const notaData = mapHistoryItemToNotaData(item);
         const preparedElement = document.createElement('div');
         preparedElement.innerHTML = buildNotaDocumentHtml(notaData).trim();
@@ -1114,12 +1112,27 @@ export default function Home() {
 
         await exportElementToPdf(exportElement, `Nota_Pembatalan_${notaData.nomor.replace(/\//g, '_')}.pdf`);
       }
+
+      setSelectedHistoryIds((prev) => prev.filter((id) => !itemsToExport.some((item) => item.id === id)));
     } catch (err) {
       console.error('Failed to export selected history PDFs:', err);
       alert('Terjadi kesalahan saat export PDF dari data history terpilih.');
     } finally {
       setIsBulkExportingHistory(false);
     }
+  };
+
+  const handleExportSelectedHistoryPdf = async () => {
+    if (!hasSelectedHistoryRows || isBulkExportingHistory) return;
+
+    const selectedItems = history.filter((item) => selectedHistoryIds.includes(item.id));
+    await exportHistoryItemsToPdf(selectedItems);
+  };
+
+  const handleExportAllVisibleHistoryPdf = async () => {
+    if (!hasVisibleHistoryRows || isBulkExportingHistory) return;
+
+    await exportHistoryItemsToPdf(history);
   };
 
   const handleDownloadPDF = async (exportOptions: PdfExportOptions = pdfExportOptions) => {
@@ -2108,6 +2121,16 @@ export default function Home() {
                     </div>
                     <div className="ms-md-auto">
                       <div className="d-flex flex-wrap gap-2">
+                        <Button
+                          variant="outline-success"
+                          size="sm"
+                          className="fw-bold d-flex align-items-center gap-2 border-2 rounded-pill px-3 shadow-sm"
+                          onClick={handleExportAllVisibleHistoryPdf}
+                          disabled={!hasVisibleHistoryRows || isBulkExportingHistory}
+                        >
+                          {isBulkExportingHistory ? <Spinner animation="border" size="sm" /> : <Download size={14} />}
+                          {isBulkExportingHistory ? 'Exporting...' : `Export Semua Halaman (${history.length})`}
+                        </Button>
                         <Button
                           variant="outline-primary"
                           size="sm"
