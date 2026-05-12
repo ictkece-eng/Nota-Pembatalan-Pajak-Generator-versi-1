@@ -126,6 +126,200 @@ const initialPdfExportOptions: PdfExportOptions = {
   approval: true
 };
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const renderNpwpHtml = (npwp: string) => {
+  const digits = npwp.replace(/\D/g, '').padEnd(15, '0').split('');
+  const groups = [
+    digits.slice(0, 2),
+    digits.slice(2, 5),
+    digits.slice(5, 8),
+    digits.slice(8, 9),
+    digits.slice(9, 12),
+    digits.slice(12, 15)
+  ];
+
+  return `
+    <div class="npwp-container">
+      ${groups
+        .map(
+          (group) => `
+            <div class="npwp-group">
+              ${group.map((digit) => `<span class="npwp-digit">${escapeHtml(digit)}</span>`).join('')}
+            </div>
+          `
+        )
+        .join('')}
+    </div>
+  `;
+};
+
+const getNotaTotalAmount = (notaData: NotaData) => notaData.items.reduce((sum, item) => sum + item.amount, 0);
+
+const getNotaPpnAmount = (notaData: NotaData) => {
+  if (notaData.ppnManual !== undefined && notaData.ppnManual !== null) {
+    return notaData.ppnManual;
+  }
+
+  return Math.floor(getNotaTotalAmount(notaData) * 0.11);
+};
+
+const mapHistoryItemToNotaData = (item: any): NotaData => ({
+  nomor: item.nomor,
+  fakturNomor: item.faktur_nomor,
+  fakturTanggal: item.faktur_tanggal ? formatISOToDisplayDate(new Date(item.faktur_tanggal).toISOString().split('T')[0]) : '',
+  penerima: {
+    name: item.penerima_name,
+    address: item.penerima_address,
+    npwp: item.penerima_npwp
+  },
+  pemberi: {
+    name: item.pemberi_name,
+    address: item.pemberi_address,
+    npwp: item.pemberi_npwp
+  },
+  items: typeof item.items === 'string' ? JSON.parse(item.items) : item.items,
+  tanggalDokumen: item.tanggal_dokumen ? formatISOToDisplayDate(new Date(item.tanggal_dokumen).toISOString().split('T')[0]) : '',
+  kotaDokumen: item.kota_dokumen ?? 'Jakarta',
+  ppnManual: item.ppn_manual || undefined,
+  penandatangan: item.penandatangan,
+  namaPenandatangan: item.nama_penandatangan || '',
+  jabatanPenandatangan: item.jabatan_penandatangan || ''
+});
+
+const buildNotaDocumentHtml = (notaData: NotaData) => {
+  const pengesahanInfo = [notaData.kotaDokumen, formatDateIndo(notaData.tanggalDokumen)].filter(Boolean).join(', ');
+  const totalAmount = getNotaTotalAmount(notaData);
+  const ppnAmount = getNotaPpnAmount(notaData);
+
+  return `
+    <div class="document-container pdf-export">
+      <div class="document-header text-center mb-4">
+        <h3 class="text-uppercase fw-bold text-decoration-underline mb-1">Nota Pembatalan</h3>
+        <p class="mb-0">Nomor : ${escapeHtml(notaData.nomor)}</p>
+      </div>
+
+      <table class="document-table document-primary-table mb-0">
+        <tbody>
+          <tr class="document-meta-row document-export-info">
+            <td style="width: 65%;">
+              <div class="document-field-line d-flex align-items-start">
+                <div style="width: 190px; flex-shrink: 0;">Atas Faktur Pajak Nomor</div>
+                <div style="width: 20px; text-align: center; flex-shrink: 0;">:</div>
+                <div class="fw-bold">${escapeHtml(notaData.fakturNomor)}</div>
+              </div>
+            </td>
+            <td>
+              <div class="document-field-line d-flex align-items-start">
+                <div style="width: 75px; flex-shrink: 0;">Tanggal</div>
+                <div style="width: 20px; text-align: center; flex-shrink: 0;">:</div>
+                <div class="text-nowrap">${escapeHtml(formatDateIndo(notaData.fakturTanggal))}</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="document-export-recipient">
+            <td colspan="2" class="document-section-title text-center fw-bold bg-light uppercase">Penerima Jasa Kena Pajak</td>
+          </tr>
+          <tr class="document-export-recipient">
+            <td colspan="2" class="p-0 border-0">
+              <div class="document-party-block p-3">
+                <div class="document-field-line d-flex mb-2 align-items-start">
+                  <div style="width: 100px; flex-shrink: 0;">Nama</div>
+                  <div style="width: 20px; text-align: center; flex-shrink: 0;">:</div>
+                  <div class="fw-bold text-uppercase">${escapeHtml(notaData.penerima.name)}</div>
+                </div>
+                <div class="document-field-line d-flex mb-2 align-items-start">
+                  <div style="width: 100px; flex-shrink: 0;">Alamat</div>
+                  <div style="width: 20px; text-align: center; flex-shrink: 0;">:</div>
+                  <div class="text-uppercase">${escapeHtml(notaData.penerima.address)}</div>
+                </div>
+                <div class="document-field-line d-flex align-items-center">
+                  <div style="width: 100px; flex-shrink: 0;">NPWP</div>
+                  <div style="width: 20px; text-align: center; flex-shrink: 0;">:</div>
+                  ${renderNpwpHtml(notaData.penerima.npwp)}
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr class="document-export-provider">
+            <td colspan="2" class="document-section-title text-center fw-bold bg-light uppercase">Kepada Pemberi Jasa Kena Pajak</td>
+          </tr>
+          <tr class="document-export-provider">
+            <td colspan="2" class="p-0 border-0">
+              <div class="document-party-block p-3">
+                <div class="document-field-line d-flex mb-2 align-items-start">
+                  <div style="width: 100px; flex-shrink: 0;">Nama</div>
+                  <div style="width: 20px; text-align: center; flex-shrink: 0;">:</div>
+                  <div class="fw-bold text-uppercase">${escapeHtml(notaData.pemberi.name)}</div>
+                </div>
+                <div class="document-field-line d-flex mb-2 align-items-start">
+                  <div style="width: 100px; flex-shrink: 0;">Alamat</div>
+                  <div style="width: 20px; text-align: center; flex-shrink: 0;">:</div>
+                  <div class="text-uppercase">${escapeHtml(notaData.pemberi.address)}</div>
+                </div>
+                <div class="document-field-line d-flex align-items-center">
+                  <div style="width: 100px; flex-shrink: 0;">NPWP</div>
+                  <div style="width: 20px; text-align: center; flex-shrink: 0;">:</div>
+                  ${renderNpwpHtml(notaData.pemberi.npwp)}
+                </div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="document-table document-items-table border-top-0">
+        <thead>
+          <tr class="document-items-header text-center fw-bold">
+            <th style="width: 50px;">No. Urut</th>
+            <th>Jasa Kena Pajak yang dibatalkan</th>
+            <th style="width: 130px;">Penggantian JKP (Rp)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${notaData.items
+            .map(
+              (item, idx) => `
+                <tr>
+                  <td class="text-center align-top">${idx + 1}</td>
+                  <td class="align-top">
+                    <div class="document-item-description" style="min-height: 100px; white-space: pre-wrap;">${escapeHtml(item.description)}</div>
+                  </td>
+                  <td class="text-end align-top">${escapeHtml(formatCurrency(item.amount))}</td>
+                </tr>
+              `
+            )
+            .join('')}
+          <tr class="document-total-row fw-bold">
+            <td colspan="2" class="text-end">Jumlah Penggantian JKP yang dibatalkan</td>
+            <td class="text-end">${escapeHtml(formatCurrency(totalAmount))}</td>
+          </tr>
+          <tr class="document-total-row fw-bold">
+            <td colspan="2" class="text-end">PPN yang diminta kembali</td>
+            <td class="text-end">${escapeHtml(formatCurrency(ppnAmount))}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="document-export-approval mt-4 d-flex flex-column align-items-end">
+        <div class="document-signature-block text-center" style="min-width: 250px;">
+          ${pengesahanInfo ? `<p class="mb-1">${escapeHtml(pengesahanInfo)}</p>` : ''}
+          ${notaData.penandatangan ? `<p class="fw-bold mb-0">${escapeHtml(notaData.penandatangan)}</p>` : ''}
+          <div class="document-signature-space" style="height: 70px;"></div>
+          ${notaData.namaPenandatangan ? `<p class="fw-bold mb-0 text-decoration-underline">${escapeHtml(notaData.namaPenandatangan)}</p>` : ''}
+          ${notaData.jabatanPenandatangan ? `<p class="mb-0">${escapeHtml(notaData.jabatanPenandatangan)}</p>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+};
+
 const pdfExportPresets: Array<{
   id: string;
   label: string;
@@ -446,6 +640,8 @@ export default function Home() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [showPdfExportModal, setShowPdfExportModal] = useState(false);
   const [pdfExportOptions, setPdfExportOptions] = useState<PdfExportOptions>(initialPdfExportOptions);
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<number[]>([]);
+  const [isBulkExportingHistory, setIsBulkExportingHistory] = useState(false);
   
   // Pagination & Search States
   const [searchQuery, setSearchQuery] = useState('');
@@ -587,6 +783,7 @@ export default function Home() {
       const result = await res.json();
       if (res.ok && result.data) {
         setHistory(result.data);
+        setSelectedHistoryIds(prev => prev.filter((id) => result.data.some((item: any) => item.id === id)));
         setTotalPages(result.pagination.totalPages);
         setCurrentPage(result.pagination.page);
         setGrandTotals({
@@ -645,28 +842,7 @@ export default function Home() {
 
   const loadFromHistory = (item: any) => {
     setEditingId(item.id);
-    const formattedItem: NotaData = {
-      nomor: item.nomor,
-      fakturNomor: item.faktur_nomor,
-      fakturTanggal: item.faktur_tanggal ? formatISOToDisplayDate(new Date(item.faktur_tanggal).toISOString().split('T')[0]) : '',
-      penerima: {
-        name: item.penerima_name,
-        address: item.penerima_address,
-        npwp: item.penerima_npwp
-      },
-      pemberi: {
-        name: item.pemberi_name,
-        address: item.pemberi_address,
-        npwp: item.pemberi_npwp
-      },
-      items: typeof item.items === 'string' ? JSON.parse(item.items) : item.items,
-      tanggalDokumen: item.tanggal_dokumen ? formatISOToDisplayDate(new Date(item.tanggal_dokumen).toISOString().split('T')[0]) : '',
-      kotaDokumen: item.kota_dokumen ?? 'Jakarta',
-      ppnManual: item.ppn_manual || undefined,
-      penandatangan: item.penandatangan,
-      namaPenandatangan: item.nama_penandatangan || '',
-      jabatanPenandatangan: item.jabatan_penandatangan || ''
-    };
+    const formattedItem: NotaData = mapHistoryItemToNotaData(item);
     setData(formattedItem);
     setActiveTab('generator');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -754,6 +930,8 @@ export default function Home() {
     data.jabatanPenandatangan
   );
   const hasSelectedPdfSections = Object.values(pdfExportOptions).some(Boolean);
+  const hasSelectedHistoryRows = selectedHistoryIds.length > 0;
+  const allVisibleHistorySelected = history.length > 0 && history.every((item) => selectedHistoryIds.includes(item.id));
 
   const handleExportCSV = () => {
     if (history.length === 0) return;
@@ -829,13 +1007,24 @@ export default function Home() {
     await handleDownloadPDF(pdfExportOptions);
   };
 
-  const handleDownloadPDF = async (exportOptions: PdfExportOptions = pdfExportOptions) => {
-    if (!notaRef.current) return;
-    
+  const handleToggleHistorySelection = (id: number) => {
+    setSelectedHistoryIds((prev) => (
+      prev.includes(id) ? prev.filter((selectedId) => selectedId !== id) : [...prev, id]
+    ));
+  };
+
+  const handleToggleSelectAllHistory = () => {
+    if (allVisibleHistorySelected) {
+      setSelectedHistoryIds((prev) => prev.filter((id) => !history.some((item) => item.id === id)));
+      return;
+    }
+
+    setSelectedHistoryIds((prev) => Array.from(new Set([...prev, ...history.map((item) => item.id)])));
+  };
+
+  const exportElementToPdf = async (preparedElement: HTMLDivElement, fileName: string) => {
     const html2canvas = (await import('html2canvas')).default;
     const { jsPDF } = await import('jspdf');
-    const element = notaRef.current;
-    const clonedElement = element.cloneNode(true) as HTMLDivElement;
     const exportWrapper = document.createElement('div');
     const exportWidth = Math.round((210 / 25.4) * 96);
     const exportHeight = Math.round((297 / 25.4) * 96);
@@ -850,16 +1039,93 @@ export default function Home() {
     exportWrapper.style.zIndex = '-1';
     exportWrapper.style.pointerEvents = 'none';
 
-    clonedElement.classList.add('pdf-export');
-    clonedElement.style.width = `${exportWidth}px`;
-    clonedElement.style.maxWidth = `${exportWidth}px`;
-    clonedElement.style.minHeight = '0';
-    clonedElement.style.height = 'auto';
-    clonedElement.style.transformOrigin = 'top left';
-    clonedElement.style.boxShadow = 'none';
-    clonedElement.style.margin = '0';
-    clonedElement.style.border = 'none';
-    clonedElement.style.overflow = 'hidden';
+    preparedElement.classList.add('pdf-export');
+    preparedElement.style.width = `${exportWidth}px`;
+    preparedElement.style.maxWidth = `${exportWidth}px`;
+    preparedElement.style.minHeight = '0';
+    preparedElement.style.height = 'auto';
+    preparedElement.style.transformOrigin = 'top left';
+    preparedElement.style.boxShadow = 'none';
+    preparedElement.style.margin = '0';
+    preparedElement.style.border = 'none';
+    preparedElement.style.overflow = 'hidden';
+
+    exportWrapper.appendChild(preparedElement);
+    document.body.appendChild(exportWrapper);
+
+    try {
+      const measuredHeight = preparedElement.scrollHeight;
+      const needsCompactLayout = measuredHeight > exportHeight;
+
+      if (needsCompactLayout) {
+        preparedElement.classList.add('pdf-export-compact');
+      }
+
+      const compactHeight = preparedElement.scrollHeight;
+      const scaleFactor = Math.min(1, exportHeight / compactHeight);
+
+      if (scaleFactor < 1) {
+        preparedElement.style.transform = `scale(${scaleFactor})`;
+      }
+
+      const canvas = await html2canvas(exportWrapper, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        width: exportWidth,
+        height: exportHeight,
+        windowWidth: exportWidth,
+        windowHeight: exportHeight
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      pdf.save(fileName);
+    } finally {
+      document.body.removeChild(exportWrapper);
+    }
+  };
+
+  const handleExportSelectedHistoryPdf = async () => {
+    if (!hasSelectedHistoryRows || isBulkExportingHistory) return;
+
+    const selectedItems = history.filter((item) => selectedHistoryIds.includes(item.id));
+    if (selectedItems.length === 0) return;
+
+    setIsBulkExportingHistory(true);
+
+    try {
+      for (const item of selectedItems) {
+        const notaData = mapHistoryItemToNotaData(item);
+        const preparedElement = document.createElement('div');
+        preparedElement.innerHTML = buildNotaDocumentHtml(notaData).trim();
+        const exportElement = preparedElement.firstElementChild as HTMLDivElement | null;
+
+        if (!exportElement) {
+          throw new Error('EXPORT_ELEMENT_NOT_FOUND');
+        }
+
+        await exportElementToPdf(exportElement, `Nota_Pembatalan_${notaData.nomor.replace(/\//g, '_')}.pdf`);
+      }
+    } catch (err) {
+      console.error('Failed to export selected history PDFs:', err);
+      alert('Terjadi kesalahan saat export PDF dari data history terpilih.');
+    } finally {
+      setIsBulkExportingHistory(false);
+    }
+  };
+
+  const handleDownloadPDF = async (exportOptions: PdfExportOptions = pdfExportOptions) => {
+    if (!notaRef.current) return;
+    const element = notaRef.current;
+    const clonedElement = element.cloneNode(true) as HTMLDivElement;
 
     const toggleExportElements = (selector: string, isVisible: boolean) => {
       clonedElement.querySelectorAll(selector).forEach((node) => {
@@ -884,47 +1150,7 @@ export default function Home() {
       itemsTable.style.display = 'none';
     }
 
-    exportWrapper.appendChild(clonedElement);
-    document.body.appendChild(exportWrapper);
-
-    try {
-      const measuredHeight = clonedElement.scrollHeight;
-      const needsCompactLayout = measuredHeight > exportHeight;
-
-      if (needsCompactLayout) {
-        clonedElement.classList.add('pdf-export-compact');
-      }
-
-      const compactHeight = clonedElement.scrollHeight;
-      const scaleFactor = Math.min(1, exportHeight / compactHeight);
-
-      if (scaleFactor < 1) {
-        clonedElement.style.transform = `scale(${scaleFactor})`;
-      }
-
-      const canvas = await html2canvas(exportWrapper, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        width: exportWidth,
-        height: exportHeight,
-        windowWidth: exportWidth,
-        windowHeight: exportHeight
-      });
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true
-      });
-
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-      pdf.save(`Nota_Pembatalan_${data.nomor.replace(/\//g, '_')}.pdf`);
-    } finally {
-      document.body.removeChild(exportWrapper);
-    }
+    await exportElementToPdf(clonedElement, `Nota_Pembatalan_${data.nomor.replace(/\//g, '_')}.pdf`);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1881,9 +2107,21 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="ms-md-auto">
-                      <Button variant="outline-dark" size="sm" className="fw-bold d-flex align-items-center gap-2 border-2 rounded-pill px-3 shadow-sm" onClick={handleExportCSV}>
-                        <Download size={14} /> Export CSV
-                      </Button>
+                      <div className="d-flex flex-wrap gap-2">
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          className="fw-bold d-flex align-items-center gap-2 border-2 rounded-pill px-3 shadow-sm"
+                          onClick={handleExportSelectedHistoryPdf}
+                          disabled={!hasSelectedHistoryRows || isBulkExportingHistory}
+                        >
+                          {isBulkExportingHistory ? <Spinner animation="border" size="sm" /> : <Download size={14} />}
+                          {isBulkExportingHistory ? 'Exporting...' : `Export PDF (${selectedHistoryIds.length})`}
+                        </Button>
+                        <Button variant="outline-dark" size="sm" className="fw-bold d-flex align-items-center gap-2 border-2 rounded-pill px-3 shadow-sm" onClick={handleExportCSV}>
+                          <Download size={14} /> Export CSV
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
@@ -1923,6 +2161,14 @@ export default function Home() {
                         <Table hover className="align-middle mb-0 custom-history-table">
                           <thead className="bg-light">
                             <tr>
+                              <th className="text-center py-3" style={{ width: '56px' }}>
+                                <Form.Check
+                                  type="checkbox"
+                                  checked={allVisibleHistorySelected}
+                                  onChange={handleToggleSelectAllHistory}
+                                  aria-label="Pilih semua history pada halaman ini"
+                                />
+                              </th>
                               <th className="px-4 py-3">Nomor Nota</th>
                               <th className="py-3">Faktur Pajak</th>
                               <th className="py-3">Penerima</th>
@@ -1933,6 +2179,14 @@ export default function Home() {
                           <tbody>
                             {history.map((item) => (
                               <tr key={item.id}>
+                                <td className="text-center">
+                                  <Form.Check
+                                    type="checkbox"
+                                    checked={selectedHistoryIds.includes(item.id)}
+                                    onChange={() => handleToggleHistorySelection(item.id)}
+                                    aria-label={`Pilih history ${item.nomor}`}
+                                  />
+                                </td>
                                 <td className="px-4 py-3">
                                   <div className="fw-bold text-primary mb-0 d-flex align-items-center gap-2">
                                     <FileText size={16} className="opacity-50" />
