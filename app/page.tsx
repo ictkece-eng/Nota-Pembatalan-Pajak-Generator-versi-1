@@ -71,6 +71,14 @@ interface NotaData {
   jabatanPenandatangan: string;
 }
 
+interface PdfExportOptions {
+  infoDocument: boolean;
+  recipient: boolean;
+  provider: boolean;
+  items: boolean;
+  approval: boolean;
+}
+
 const initialData: NotaData = {
   nomor: '880/RT/02/2025-025/RT/02/2025',
   fakturNomor: '030.007-24.80471793',
@@ -98,6 +106,14 @@ const initialData: NotaData = {
   penandatangan: 'PT Pertamina Hulu Energi ONWJ',
   namaPenandatangan: '',
   jabatanPenandatangan: ''
+};
+
+const initialPdfExportOptions: PdfExportOptions = {
+  infoDocument: true,
+  recipient: true,
+  provider: true,
+  items: true,
+  approval: true
 };
 
 // Helpers
@@ -380,6 +396,8 @@ export default function Home() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [showPdfExportModal, setShowPdfExportModal] = useState(false);
+  const [pdfExportOptions, setPdfExportOptions] = useState<PdfExportOptions>(initialPdfExportOptions);
   
   // Pagination & Search States
   const [searchQuery, setSearchQuery] = useState('');
@@ -687,6 +705,7 @@ export default function Home() {
     data.namaPenandatangan ||
     data.jabatanPenandatangan
   );
+  const hasSelectedPdfSections = Object.values(pdfExportOptions).some(Boolean);
 
   const handleExportCSV = () => {
     if (history.length === 0) return;
@@ -730,7 +749,25 @@ export default function Home() {
     window.print();
   };
 
-  const handleDownloadPDF = async () => {
+  const handleTogglePdfExportOption = (option: keyof PdfExportOptions) => {
+    setPdfExportOptions(prev => ({
+      ...prev,
+      [option]: !prev[option]
+    }));
+  };
+
+  const handleOpenPdfExportModal = () => {
+    setShowPdfExportModal(true);
+  };
+
+  const handleConfirmPdfExport = async () => {
+    if (!hasSelectedPdfSections) return;
+
+    setShowPdfExportModal(false);
+    await handleDownloadPDF(pdfExportOptions);
+  };
+
+  const handleDownloadPDF = async (exportOptions: PdfExportOptions = pdfExportOptions) => {
     if (!notaRef.current) return;
     
     const html2canvas = (await import('html2canvas')).default;
@@ -761,6 +798,29 @@ export default function Home() {
     clonedElement.style.margin = '0';
     clonedElement.style.border = 'none';
     clonedElement.style.overflow = 'hidden';
+
+    const toggleExportElements = (selector: string, isVisible: boolean) => {
+      clonedElement.querySelectorAll(selector).forEach((node) => {
+        const element = node as HTMLElement;
+        element.style.display = isVisible ? '' : 'none';
+      });
+    };
+
+    toggleExportElements('.document-export-info', exportOptions.infoDocument);
+    toggleExportElements('.document-export-recipient', exportOptions.recipient);
+    toggleExportElements('.document-export-provider', exportOptions.provider);
+    toggleExportElements('.document-export-approval', exportOptions.approval);
+
+    const primaryTable = clonedElement.querySelector('.document-primary-table') as HTMLElement | null;
+    const itemsTable = clonedElement.querySelector('.document-items-table') as HTMLElement | null;
+
+    if (primaryTable && !exportOptions.infoDocument && !exportOptions.recipient && !exportOptions.provider) {
+      primaryTable.style.display = 'none';
+    }
+
+    if (itemsTable && !exportOptions.items) {
+      itemsTable.style.display = 'none';
+    }
 
     exportWrapper.appendChild(clonedElement);
     document.body.appendChild(exportWrapper);
@@ -1189,7 +1249,7 @@ export default function Home() {
             </Button>
             {activeTab === 'generator' && (
               <div className="d-flex gap-2">
-                <Button variant="outline-info" size="sm" onClick={handleDownloadPDF} className="fw-bold d-flex align-items-center gap-2">
+                <Button variant="outline-info" size="sm" onClick={handleOpenPdfExportModal} className="fw-bold d-flex align-items-center gap-2">
                   <Download size={16} /> PDF
                 </Button>
                 <Button variant="warning" size="sm" onClick={handlePrint} className="fw-bold d-flex align-items-center gap-2 text-dark">
@@ -1580,9 +1640,9 @@ export default function Home() {
                     <p className="mb-0">Nomor : {data.nomor}</p>
                   </div>
 
-                  <table className="document-table mb-0">
+                  <table className="document-table document-primary-table mb-0">
                     <tbody>
-                      <tr className="document-meta-row">
+                      <tr className="document-meta-row document-export-info">
                         <td style={{ width: '65%' }}>
                           <div className="document-field-line d-flex align-items-start">
                             <div style={{ width: '190px', flexShrink: 0 }}>Atas Faktur Pajak Nomor</div>
@@ -1598,10 +1658,10 @@ export default function Home() {
                           </div>
                         </td>
                       </tr>
-                      <tr>
+                      <tr className="document-export-recipient">
                         <td colSpan={2} className="document-section-title text-center fw-bold bg-light uppercase">Penerima Jasa Kena Pajak</td>
                       </tr>
-                      <tr>
+                      <tr className="document-export-recipient">
                         <td colSpan={2} className="p-0 border-0">
                           <div className="document-party-block p-3">
                             <div className="document-field-line d-flex mb-2 align-items-start">
@@ -1622,10 +1682,10 @@ export default function Home() {
                           </div>
                         </td>
                       </tr>
-                      <tr>
+                      <tr className="document-export-provider">
                         <td colSpan={2} className="document-section-title text-center fw-bold bg-light uppercase">Kepada Pemberi Jasa Kena Pajak</td>
                       </tr>
-                      <tr>
+                      <tr className="document-export-provider">
                         <td colSpan={2} className="p-0 border-0">
                           <div className="document-party-block p-3">
                             <div className="document-field-line d-flex mb-2 align-items-start">
@@ -1649,7 +1709,7 @@ export default function Home() {
                     </tbody>
                   </table>
 
-                  <table className="document-table border-top-0">
+                  <table className="document-table document-items-table border-top-0">
                     <thead>
                       <tr className="document-items-header text-center fw-bold">
                         <th style={{ width: '50px' }}>No. Urut</th>
@@ -1680,7 +1740,7 @@ export default function Home() {
                     </tbody>
                   </table>
 
-                  <div className="mt-4 d-flex flex-column align-items-end">
+                  <div className="document-export-approval mt-4 d-flex flex-column align-items-end">
                     <div className="document-signature-block text-center" style={{ minWidth: '250px' }}>
                       {pengesahanInfo && <p className="mb-1">{pengesahanInfo}</p>}
                       {data.penandatangan && <p className="fw-bold mb-0">{data.penandatangan}</p>}
@@ -1920,6 +1980,65 @@ export default function Home() {
           </Tab>
         </Tabs>
       </Container>
+
+      <Modal show={showPdfExportModal} onHide={() => setShowPdfExportModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Opsi Export PDF</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p className="text-muted small mb-3">Pilih bagian dokumen yang ingin ikut dimasukkan ke PDF dengan font formal/legal.</p>
+          <div className="d-flex flex-column gap-2">
+            <Form.Check
+              id="pdf-export-info"
+              type="checkbox"
+              label="Informasi dokumen dan faktur"
+              checked={pdfExportOptions.infoDocument}
+              onChange={() => handleTogglePdfExportOption('infoDocument')}
+            />
+            <Form.Check
+              id="pdf-export-recipient"
+              type="checkbox"
+              label="Penerima jasa kena pajak"
+              checked={pdfExportOptions.recipient}
+              onChange={() => handleTogglePdfExportOption('recipient')}
+            />
+            <Form.Check
+              id="pdf-export-provider"
+              type="checkbox"
+              label="Kepada pemberi jasa kena pajak"
+              checked={pdfExportOptions.provider}
+              onChange={() => handleTogglePdfExportOption('provider')}
+            />
+            <Form.Check
+              id="pdf-export-items"
+              type="checkbox"
+              label="Rincian jasa dan total nilai"
+              checked={pdfExportOptions.items}
+              onChange={() => handleTogglePdfExportOption('items')}
+            />
+            <Form.Check
+              id="pdf-export-approval"
+              type="checkbox"
+              label="Pengesahan / tanda tangan"
+              checked={pdfExportOptions.approval}
+              onChange={() => handleTogglePdfExportOption('approval')}
+            />
+          </div>
+          {!hasSelectedPdfSections && (
+            <Alert variant="warning" className="mt-3 mb-0 py-2 small">
+              Pilih minimal satu bagian untuk diexport ke PDF.
+            </Alert>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setShowPdfExportModal(false)}>
+            Batal
+          </Button>
+          <Button variant="primary" onClick={handleConfirmPdfExport} disabled={!hasSelectedPdfSections}>
+            Export PDF
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       <footer className="mt-5 py-4 border-top text-center no-print text-muted small">
         <Container>
