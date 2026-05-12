@@ -614,7 +614,12 @@ export default function Home() {
         method: 'DELETE',
       });
       if (res.ok) {
-        if (editingId === id) setEditingId(null);
+        if (editingId === id) {
+          setEditingId(null);
+          setData(initialData);
+          setSaveSuccess(false);
+          setSaveError(null);
+        }
         fetchHistory();
       } else {
         const result = await res.json();
@@ -1403,7 +1408,21 @@ export default function Home() {
             </Card>
 
             <Card className="mb-4 shadow-sm">
-              <Card.Header className="bg-dark text-white font-weight-bold">Pengesahan</Card.Header>
+              <Card.Header className="bg-dark text-white d-flex justify-content-between align-items-center gap-2">
+                <span className="font-weight-bold">Pengesahan</span>
+                {editingId && (
+                  <Button
+                    variant="outline-light"
+                    size="sm"
+                    className="fw-bold d-flex align-items-center gap-2"
+                    onClick={() => handleDelete(editingId)}
+                    disabled={isSaving || isExtracting}
+                    title="Hapus data yang sedang dibuka"
+                  >
+                    <Trash2 size={14} /> Hapus
+                  </Button>
+                )}
+              </Card.Header>
               <Card.Body>
                 <Row className="g-3">
                   <Col md={6}>
