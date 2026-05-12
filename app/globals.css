@@ -10,28 +10,37 @@ body {
     background: white;
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
     border: 1px solid #dee2e6;
-    padding: 1.2cm;
+    padding: 0.95cm;
     min-height: 29.7cm;
     width: 21cm; /* A4 width */
     max-width: 100%;
     margin: 0 auto;
     font-family: 'Courier New', Courier, monospace;
-    font-size: 11pt;
-    line-height: 1.4;
+    font-size: 10pt;
+    line-height: 1.45;
     color: black;
     position: relative;
+}
+
+.document-header h3 {
+    font-size: 18pt;
+    letter-spacing: 0.5px;
+}
+
+.document-header p {
+    font-size: 9.5pt;
 }
 
 .document-table {
     width: 100%;
     border-collapse: collapse;
-    border: 1px solid black;
-    font-size: 10pt;
+    border: 1.5px solid black;
+    font-size: 9.4pt;
 }
 
 .document-table td, .document-table th {
-    border: 1px solid black;
-    padding: 6px 8px;
+    border: 1.2px solid black;
+    padding: 5px 7px;
 }
 
 .document-header,
@@ -46,45 +55,99 @@ body {
     max-width: none !important;
     min-height: 29.7cm !important;
     height: 29.7cm !important;
-    padding: 0.75cm 0.85cm !important;
+    padding: 0.85cm 0.85cm 0.8cm !important;
     box-shadow: none !important;
     border: none !important;
-    font-size: 9.5pt !important;
-    line-height: 1.2 !important;
+    font-size: 9.7pt !important;
+    line-height: 1.28 !important;
     overflow: hidden !important;
 }
 
+.document-container.pdf-export .document-header h3 {
+    font-size: 17pt;
+    margin-bottom: 0.2rem !important;
+}
+
+.document-container.pdf-export .document-header p {
+    font-size: 9pt;
+}
+
 .document-container.pdf-export .document-header {
-    margin-bottom: 0.6rem !important;
+    margin-bottom: 0.8rem !important;
 }
 
 .document-container.pdf-export .document-table {
     table-layout: fixed;
-    font-size: 8.6pt;
+    font-size: 8.8pt;
 }
 
 .document-container.pdf-export .document-table td,
 .document-container.pdf-export .document-table th {
-    padding: 3px 5px;
+    padding: 4px 6px;
 }
 
 .document-container.pdf-export .document-item-description {
-    min-height: 56px !important;
+    min-height: 74px !important;
 }
 
 .document-container.pdf-export .document-signature-block {
-    min-width: 220px !important;
+    min-width: 235px !important;
 }
 
 .document-container.pdf-export .document-signature-space {
-    height: 44px !important;
+    height: 56px !important;
 }
 
 .document-container.pdf-export .npwp-container {
-    gap: 3px;
+    gap: 4px;
 }
 
 .document-container.pdf-export .npwp-digit {
+    width: 16px;
+    height: 21px;
+    font-size: 8pt;
+}
+
+.document-container.pdf-export.pdf-export-compact {
+    padding: 0.66cm 0.72cm 0.62cm !important;
+    font-size: 8.9pt !important;
+    line-height: 1.13 !important;
+}
+
+.document-container.pdf-export.pdf-export-compact .document-header {
+    margin-bottom: 0.45rem !important;
+}
+
+.document-container.pdf-export.pdf-export-compact .document-header h3 {
+    font-size: 15.5pt;
+}
+
+.document-container.pdf-export.pdf-export-compact .document-table {
+    font-size: 8pt;
+}
+
+.document-container.pdf-export.pdf-export-compact .document-table td,
+.document-container.pdf-export.pdf-export-compact .document-table th {
+    padding: 3px 4px;
+}
+
+.document-container.pdf-export.pdf-export-compact .document-item-description {
+    min-height: 44px !important;
+}
+
+.document-container.pdf-export.pdf-export-compact .document-signature-block {
+    min-width: 210px !important;
+}
+
+.document-container.pdf-export.pdf-export-compact .document-signature-space {
+    height: 34px !important;
+}
+
+.document-container.pdf-export.pdf-export-compact .npwp-container {
+    gap: 3px;
+}
+
+.document-container.pdf-export.pdf-export-compact .npwp-digit {
     width: 15px;
     height: 20px;
     font-size: 8pt;
@@ -94,6 +157,28 @@ body {
     display: flex;
     gap: 6px;
     align-items: center;
+}
+
+.document-meta-row td {
+    vertical-align: middle;
+}
+
+.document-field-line {
+    line-height: 1.5;
+}
+
+.document-party-block {
+    min-height: 132px;
+}
+
+.document-section-title {
+    background: #f3f3f3 !important;
+    letter-spacing: 0.2px;
+}
+
+.document-items-header th,
+.document-total-row td {
+    background: #f8f8f8;
 }
 
 .npwp-group {
