@@ -739,10 +739,8 @@ export default function Home() {
     const clonedElement = element.cloneNode(true) as HTMLDivElement;
     const exportWrapper = document.createElement('div');
     const elementWidth = element.scrollWidth || element.offsetWidth;
-    const elementHeight = element.scrollHeight;
     const a4AspectRatio = 297 / 210;
     const targetHeight = elementWidth * a4AspectRatio;
-    const scaleFactor = Math.min(1, targetHeight / elementHeight);
 
     exportWrapper.style.position = 'fixed';
     exportWrapper.style.left = '-10000px';
@@ -754,20 +752,28 @@ export default function Home() {
     exportWrapper.style.zIndex = '-1';
     exportWrapper.style.pointerEvents = 'none';
 
+    clonedElement.classList.add('pdf-export');
     clonedElement.style.width = `${elementWidth}px`;
     clonedElement.style.maxWidth = `${elementWidth}px`;
     clonedElement.style.minHeight = '0';
-    clonedElement.style.height = `${elementHeight}px`;
-    clonedElement.style.transform = `scale(${scaleFactor})`;
+    clonedElement.style.height = `${Math.ceil(targetHeight)}px`;
     clonedElement.style.transformOrigin = 'top left';
     clonedElement.style.boxShadow = 'none';
     clonedElement.style.margin = '0';
     clonedElement.style.border = 'none';
+    clonedElement.style.overflow = 'hidden';
 
     exportWrapper.appendChild(clonedElement);
     document.body.appendChild(exportWrapper);
 
     try {
+      const exportHeight = clonedElement.scrollHeight;
+      const scaleFactor = Math.min(1, targetHeight / exportHeight);
+
+      if (scaleFactor < 1) {
+        clonedElement.style.transform = `scale(${scaleFactor})`;
+      }
+
       const canvas = await html2canvas(exportWrapper, {
         scale: 2,
         useCORS: true,
@@ -1563,7 +1569,7 @@ export default function Home() {
 
               <Col xl={6} className="d-flex justify-content-center">
                 <div className="document-container" ref={notaRef}>
-                  <div className="text-center mb-4">
+                  <div className="document-header text-center mb-4">
                     <h3 className="text-uppercase fw-bold text-decoration-underline mb-1">Nota Pembatalan</h3>
                     <p className="mb-0">Nomor : {data.nomor}</p>
                   </div>
@@ -1650,7 +1656,7 @@ export default function Home() {
                         <tr key={item.id}>
                           <td className="text-center align-top">{idx + 1}</td>
                           <td className="align-top">
-                            <div style={{ minHeight: '100px', whiteSpace: 'pre-wrap' }}>
+                            <div className="document-item-description" style={{ minHeight: '100px', whiteSpace: 'pre-wrap' }}>
                               {item.description}
                             </div>
                           </td>
@@ -1669,10 +1675,10 @@ export default function Home() {
                   </table>
 
                   <div className="mt-4 d-flex flex-column align-items-end">
-                    <div className="text-center" style={{ minWidth: '250px' }}>
+                    <div className="document-signature-block text-center" style={{ minWidth: '250px' }}>
                       {pengesahanInfo && <p className="mb-1">{pengesahanInfo}</p>}
                       {data.penandatangan && <p className="fw-bold mb-0">{data.penandatangan}</p>}
-                      <div style={{ height: '70px' }}></div>
+                      <div className="document-signature-space" style={{ height: '70px' }}></div>
                       {data.namaPenandatangan && <p className="fw-bold mb-0 text-decoration-underline">{data.namaPenandatangan}</p>}
                       {data.jabatanPenandatangan && <p className="mb-0">{data.jabatanPenandatangan}</p>}
                     </div>
