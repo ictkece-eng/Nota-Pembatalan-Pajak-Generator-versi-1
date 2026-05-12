@@ -34,6 +34,62 @@ body {
     padding: 6px 8px;
 }
 
+.document-header,
+.document-signature-block,
+.document-item-description,
+.document-signature-space {
+    box-sizing: border-box;
+}
+
+.document-container.pdf-export {
+    width: 21cm !important;
+    max-width: none !important;
+    min-height: 29.7cm !important;
+    height: 29.7cm !important;
+    padding: 0.75cm 0.85cm !important;
+    box-shadow: none !important;
+    border: none !important;
+    font-size: 9.5pt !important;
+    line-height: 1.2 !important;
+    overflow: hidden !important;
+}
+
+.document-container.pdf-export .document-header {
+    margin-bottom: 0.6rem !important;
+}
+
+.document-container.pdf-export .document-table {
+    table-layout: fixed;
+    font-size: 8.6pt;
+}
+
+.document-container.pdf-export .document-table td,
+.document-container.pdf-export .document-table th {
+    padding: 3px 5px;
+}
+
+.document-container.pdf-export .document-item-description {
+    min-height: 56px !important;
+}
+
+.document-container.pdf-export .document-signature-block {
+    min-width: 220px !important;
+}
+
+.document-container.pdf-export .document-signature-space {
+    height: 44px !important;
+}
+
+.document-container.pdf-export .npwp-container {
+    gap: 3px;
+}
+
+.document-container.pdf-export .npwp-digit {
+    width: 15px;
+    height: 20px;
+    font-size: 8pt;
+}
+
 .npwp-container {
     display: flex;
     gap: 6px;
