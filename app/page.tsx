@@ -616,7 +616,17 @@ export default function Home() {
       if (res.ok) {
         if (editingId === id) {
           setEditingId(null);
-          setData(initialData);
+          setData({
+            ...initialData,
+            penerima: { ...initialData.penerima },
+            pemberi: { ...initialData.pemberi },
+            items: initialData.items.map((item) => ({ ...item })),
+            tanggalDokumen: '',
+            kotaDokumen: '',
+            penandatangan: '',
+            namaPenandatangan: '',
+            jabatanPenandatangan: ''
+          });
           setSaveSuccess(false);
           setSaveError(null);
         }
@@ -629,6 +639,17 @@ export default function Home() {
       console.error("Failed to delete:", err);
       alert("Terjadi kesalahan saat menghapus data.");
     }
+  };
+
+  const handleClearPengesahan = () => {
+    setData(prev => ({
+      ...prev,
+      tanggalDokumen: '',
+      kotaDokumen: '',
+      penandatangan: '',
+      namaPenandatangan: '',
+      jabatanPenandatangan: ''
+    }));
   };
 
   const totalAmount = useMemo(() => {
@@ -657,6 +678,15 @@ export default function Home() {
       return sum + Math.floor(amount * 0.11);
     }, 0);
   }, [history]);
+
+  const pengesahanInfo = [data.kotaDokumen, formatDateIndo(data.tanggalDokumen)].filter(Boolean).join(', ');
+  const hasPengesahanContent = Boolean(
+    data.kotaDokumen ||
+    data.tanggalDokumen ||
+    data.penandatangan ||
+    data.namaPenandatangan ||
+    data.jabatanPenandatangan
+  );
 
   const handleExportCSV = () => {
     if (history.length === 0) return;
@@ -1410,16 +1440,16 @@ export default function Home() {
             <Card className="mb-4 shadow-sm">
               <Card.Header className="bg-dark text-white d-flex justify-content-between align-items-center gap-2">
                 <span className="font-weight-bold">Pengesahan</span>
-                {editingId && (
+                {hasPengesahanContent && (
                   <Button
                     variant="outline-light"
                     size="sm"
                     className="fw-bold d-flex align-items-center gap-2"
-                    onClick={() => handleDelete(editingId)}
+                    onClick={handleClearPengesahan}
                     disabled={isSaving || isExtracting}
-                    title="Hapus data yang sedang dibuka"
+                    title="Hapus tulisan pengesahan"
                   >
-                    <Trash2 size={14} /> Hapus
+                    <Trash2 size={14} /> Hapus Tulisan
                   </Button>
                 )}
               </Card.Header>
@@ -1593,8 +1623,8 @@ export default function Home() {
 
                   <div className="mt-4 d-flex flex-column align-items-end">
                     <div className="text-center" style={{ minWidth: '250px' }}>
-                      <p className="mb-1">{data.kotaDokumen}, {formatDateIndo(data.tanggalDokumen)}</p>
-                      <p className="fw-bold mb-0">{data.penandatangan}</p>
+                      {pengesahanInfo && <p className="mb-1">{pengesahanInfo}</p>}
+                      {data.penandatangan && <p className="fw-bold mb-0">{data.penandatangan}</p>}
                       <div style={{ height: '70px' }}></div>
                       {data.namaPenandatangan && <p className="fw-bold mb-0 text-decoration-underline">{data.namaPenandatangan}</p>}
                       {data.jabatanPenandatangan && <p className="mb-0">{data.jabatanPenandatangan}</p>}
