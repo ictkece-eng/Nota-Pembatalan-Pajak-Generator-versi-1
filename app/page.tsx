@@ -595,7 +595,7 @@ export default function Home() {
       },
       items: typeof item.items === 'string' ? JSON.parse(item.items) : item.items,
       tanggalDokumen: item.tanggal_dokumen ? formatISOToDisplayDate(new Date(item.tanggal_dokumen).toISOString().split('T')[0]) : '',
-      kotaDokumen: item.kota_dokumen || 'Jakarta',
+      kotaDokumen: item.kota_dokumen ?? 'Jakarta',
       ppnManual: item.ppn_manual || undefined,
       penandatangan: item.penandatangan,
       namaPenandatangan: item.nama_penandatangan || '',
@@ -733,11 +733,12 @@ export default function Home() {
   const handleDownloadPDF = async () => {
     if (!notaRef.current) return;
     
-    const html2pdf = (await import('html2pdf.js')).default;
+    const html2canvas = (await import('html2canvas')).default;
+    const { jsPDF } = await import('jspdf');
     const element = notaRef.current;
     const clonedElement = element.cloneNode(true) as HTMLDivElement;
     const exportWrapper = document.createElement('div');
-    const elementWidth = element.offsetWidth;
+    const elementWidth = element.scrollWidth || element.offsetWidth;
     const elementHeight = element.scrollHeight;
     const a4AspectRatio = 297 / 210;
     const targetHeight = elementWidth * a4AspectRatio;
@@ -747,7 +748,7 @@ export default function Home() {
     exportWrapper.style.left = '-10000px';
     exportWrapper.style.top = '0';
     exportWrapper.style.width = `${elementWidth}px`;
-    exportWrapper.style.height = `${Math.ceil(elementHeight * scaleFactor)}px`;
+    exportWrapper.style.height = `${Math.ceil(targetHeight)}px`;
     exportWrapper.style.overflow = 'hidden';
     exportWrapper.style.background = '#ffffff';
     exportWrapper.style.zIndex = '-1';
@@ -761,21 +762,32 @@ export default function Home() {
     clonedElement.style.transformOrigin = 'top left';
     clonedElement.style.boxShadow = 'none';
     clonedElement.style.margin = '0';
+    clonedElement.style.border = 'none';
 
     exportWrapper.appendChild(clonedElement);
     document.body.appendChild(exportWrapper);
 
-    const opt = {
-      margin: 0,
-      filename: `Nota_Pembatalan_${data.nomor.replace(/\//g, '_')}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['avoid-all'] }
-    } as const;
-
     try {
-      await html2pdf().set(opt).from(exportWrapper).save();
+      const canvas = await html2canvas(exportWrapper, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        width: elementWidth,
+        height: Math.ceil(targetHeight),
+        windowWidth: elementWidth,
+        windowHeight: Math.ceil(targetHeight)
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      pdf.save(`Nota_Pembatalan_${data.nomor.replace(/\//g, '_')}.pdf`);
     } finally {
       document.body.removeChild(exportWrapper);
     }
