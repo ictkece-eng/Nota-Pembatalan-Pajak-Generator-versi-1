@@ -735,15 +735,50 @@ export default function Home() {
     
     const html2pdf = (await import('html2pdf.js')).default;
     const element = notaRef.current;
+    const clonedElement = element.cloneNode(true) as HTMLDivElement;
+    const exportWrapper = document.createElement('div');
+    const elementWidth = element.offsetWidth;
+    const elementHeight = element.scrollHeight;
+    const a4AspectRatio = 297 / 210;
+    const targetHeight = elementWidth * a4AspectRatio;
+    const scaleFactor = Math.min(1, targetHeight / elementHeight);
+
+    exportWrapper.style.position = 'fixed';
+    exportWrapper.style.left = '-10000px';
+    exportWrapper.style.top = '0';
+    exportWrapper.style.width = `${elementWidth}px`;
+    exportWrapper.style.height = `${Math.ceil(elementHeight * scaleFactor)}px`;
+    exportWrapper.style.overflow = 'hidden';
+    exportWrapper.style.background = '#ffffff';
+    exportWrapper.style.zIndex = '-1';
+    exportWrapper.style.pointerEvents = 'none';
+
+    clonedElement.style.width = `${elementWidth}px`;
+    clonedElement.style.maxWidth = `${elementWidth}px`;
+    clonedElement.style.minHeight = '0';
+    clonedElement.style.height = `${elementHeight}px`;
+    clonedElement.style.transform = `scale(${scaleFactor})`;
+    clonedElement.style.transformOrigin = 'top left';
+    clonedElement.style.boxShadow = 'none';
+    clonedElement.style.margin = '0';
+
+    exportWrapper.appendChild(clonedElement);
+    document.body.appendChild(exportWrapper);
+
     const opt = {
       margin: 0,
       filename: `Nota_Pembatalan_${data.nomor.replace(/\//g, '_')}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all'] }
     } as const;
 
-    html2pdf().set(opt).from(element).save();
+    try {
+      await html2pdf().set(opt).from(exportWrapper).save();
+    } finally {
+      document.body.removeChild(exportWrapper);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
