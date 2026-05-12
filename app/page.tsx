@@ -79,6 +79,16 @@ interface PdfExportOptions {
   approval: boolean;
 }
 
+type PdfExportOptionKey = keyof PdfExportOptions;
+
+const pdfExportSectionItems: Array<{ key: PdfExportOptionKey; label: string }> = [
+  { key: 'infoDocument', label: 'Informasi dokumen dan faktur' },
+  { key: 'recipient', label: 'Penerima jasa kena pajak' },
+  { key: 'provider', label: 'Kepada pemberi jasa kena pajak' },
+  { key: 'items', label: 'Rincian jasa dan total nilai' },
+  { key: 'approval', label: 'Pengesahan / tanda tangan' }
+];
+
 const initialData: NotaData = {
   nomor: '880/RT/02/2025-025/RT/02/2025',
   fakturNomor: '030.007-24.80471793',
@@ -115,6 +125,44 @@ const initialPdfExportOptions: PdfExportOptions = {
   items: true,
   approval: true
 };
+
+const pdfExportPresets: Array<{
+  id: string;
+  label: string;
+  description: string;
+  options: PdfExportOptions;
+}> = [
+  {
+    id: 'lengkap',
+    label: 'PDF Lengkap',
+    description: 'Semua bagian dokumen ikut diexport.',
+    options: initialPdfExportOptions
+  },
+  {
+    id: 'ringkas',
+    label: 'PDF Ringkas',
+    description: 'Fokus ke info utama dan rincian jasa.',
+    options: {
+      infoDocument: true,
+      recipient: false,
+      provider: false,
+      items: true,
+      approval: false
+    }
+  },
+  {
+    id: 'tanpa-pengesahan',
+    label: 'Tanpa Pengesahan',
+    description: 'Cocok jika mau preview isi tanpa tanda tangan.',
+    options: {
+      infoDocument: true,
+      recipient: true,
+      provider: true,
+      items: true,
+      approval: false
+    }
+  }
+];
 
 // Helpers
 const formatCurrency = (amount: number) => {
@@ -754,6 +802,20 @@ export default function Home() {
       ...prev,
       [option]: !prev[option]
     }));
+  };
+
+  const handleSetAllPdfExportOptions = (value: boolean) => {
+    setPdfExportOptions({
+      infoDocument: value,
+      recipient: value,
+      provider: value,
+      items: value,
+      approval: value
+    });
+  };
+
+  const handleApplyPdfExportPreset = (options: PdfExportOptions) => {
+    setPdfExportOptions({ ...options });
   };
 
   const handleOpenPdfExportModal = () => {
@@ -1987,42 +2049,41 @@ export default function Home() {
         </Modal.Header>
         <Modal.Body>
           <p className="text-muted small mb-3">Pilih bagian dokumen yang ingin ikut dimasukkan ke PDF dengan font formal/legal.</p>
+          <div className="d-flex flex-wrap gap-2 mb-3">
+            <Button variant="outline-primary" size="sm" className="fw-bold" onClick={() => handleSetAllPdfExportOptions(true)}>
+              Pilih Semua
+            </Button>
+            <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={() => handleSetAllPdfExportOptions(false)}>
+              Hapus Semua
+            </Button>
+          </div>
+          <div className="mb-3">
+            <div className="small fw-bold text-uppercase text-muted mb-2" style={{ letterSpacing: '0.6px' }}>Preset Cepat</div>
+            <div className="d-flex flex-column gap-2">
+              {pdfExportPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className="btn btn-light border text-start shadow-sm"
+                  onClick={() => handleApplyPdfExportPreset(preset.options)}
+                >
+                  <div className="fw-bold text-dark">{preset.label}</div>
+                  <div className="small text-muted">{preset.description}</div>
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="d-flex flex-column gap-2">
-            <Form.Check
-              id="pdf-export-info"
-              type="checkbox"
-              label="Informasi dokumen dan faktur"
-              checked={pdfExportOptions.infoDocument}
-              onChange={() => handleTogglePdfExportOption('infoDocument')}
-            />
-            <Form.Check
-              id="pdf-export-recipient"
-              type="checkbox"
-              label="Penerima jasa kena pajak"
-              checked={pdfExportOptions.recipient}
-              onChange={() => handleTogglePdfExportOption('recipient')}
-            />
-            <Form.Check
-              id="pdf-export-provider"
-              type="checkbox"
-              label="Kepada pemberi jasa kena pajak"
-              checked={pdfExportOptions.provider}
-              onChange={() => handleTogglePdfExportOption('provider')}
-            />
-            <Form.Check
-              id="pdf-export-items"
-              type="checkbox"
-              label="Rincian jasa dan total nilai"
-              checked={pdfExportOptions.items}
-              onChange={() => handleTogglePdfExportOption('items')}
-            />
-            <Form.Check
-              id="pdf-export-approval"
-              type="checkbox"
-              label="Pengesahan / tanda tangan"
-              checked={pdfExportOptions.approval}
-              onChange={() => handleTogglePdfExportOption('approval')}
-            />
+            {pdfExportSectionItems.map((section) => (
+              <Form.Check
+                key={section.key}
+                id={`pdf-export-${section.key}`}
+                type="checkbox"
+                label={section.label}
+                checked={pdfExportOptions[section.key]}
+                onChange={() => handleTogglePdfExportOption(section.key)}
+              />
+            ))}
           </div>
           {!hasSelectedPdfSections && (
             <Alert variant="warning" className="mt-3 mb-0 py-2 small">
