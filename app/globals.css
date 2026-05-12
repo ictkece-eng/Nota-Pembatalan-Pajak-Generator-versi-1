@@ -60,11 +60,18 @@ body {
     border: none !important;
     font-size: 9.7pt !important;
     line-height: 1.28 !important;
+    font-family: "Times New Roman", Georgia, serif !important;
     overflow: hidden !important;
+}
+
+.document-container.pdf-export * {
+    font-family: "Times New Roman", Georgia, serif !important;
 }
 
 .document-container.pdf-export .document-header h3 {
     font-size: 17pt;
+    font-weight: 700;
+    letter-spacing: 0.3px;
     margin-bottom: 0.2rem !important;
 }
 
@@ -79,6 +86,12 @@ body {
 .document-container.pdf-export .document-table {
     table-layout: fixed;
     font-size: 8.8pt;
+}
+
+.document-container.pdf-export .document-section-title,
+.document-container.pdf-export .document-items-header th,
+.document-container.pdf-export .document-total-row td {
+    font-weight: 700;
 }
 
 .document-container.pdf-export .document-table td,
