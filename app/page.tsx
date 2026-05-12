@@ -738,25 +738,24 @@ export default function Home() {
     const element = notaRef.current;
     const clonedElement = element.cloneNode(true) as HTMLDivElement;
     const exportWrapper = document.createElement('div');
-    const elementWidth = element.scrollWidth || element.offsetWidth;
-    const a4AspectRatio = 297 / 210;
-    const targetHeight = elementWidth * a4AspectRatio;
+    const exportWidth = Math.round((210 / 25.4) * 96);
+    const exportHeight = Math.round((297 / 25.4) * 96);
 
     exportWrapper.style.position = 'fixed';
     exportWrapper.style.left = '-10000px';
     exportWrapper.style.top = '0';
-    exportWrapper.style.width = `${elementWidth}px`;
-    exportWrapper.style.height = `${Math.ceil(targetHeight)}px`;
+    exportWrapper.style.width = `${exportWidth}px`;
+    exportWrapper.style.height = `${exportHeight}px`;
     exportWrapper.style.overflow = 'hidden';
     exportWrapper.style.background = '#ffffff';
     exportWrapper.style.zIndex = '-1';
     exportWrapper.style.pointerEvents = 'none';
 
     clonedElement.classList.add('pdf-export');
-    clonedElement.style.width = `${elementWidth}px`;
-    clonedElement.style.maxWidth = `${elementWidth}px`;
+    clonedElement.style.width = `${exportWidth}px`;
+    clonedElement.style.maxWidth = `${exportWidth}px`;
     clonedElement.style.minHeight = '0';
-    clonedElement.style.height = `${Math.ceil(targetHeight)}px`;
+    clonedElement.style.height = 'auto';
     clonedElement.style.transformOrigin = 'top left';
     clonedElement.style.boxShadow = 'none';
     clonedElement.style.margin = '0';
@@ -767,8 +766,15 @@ export default function Home() {
     document.body.appendChild(exportWrapper);
 
     try {
-      const exportHeight = clonedElement.scrollHeight;
-      const scaleFactor = Math.min(1, targetHeight / exportHeight);
+      const measuredHeight = clonedElement.scrollHeight;
+      const needsCompactLayout = measuredHeight > exportHeight;
+
+      if (needsCompactLayout) {
+        clonedElement.classList.add('pdf-export-compact');
+      }
+
+      const compactHeight = clonedElement.scrollHeight;
+      const scaleFactor = Math.min(1, exportHeight / compactHeight);
 
       if (scaleFactor < 1) {
         clonedElement.style.transform = `scale(${scaleFactor})`;
@@ -778,10 +784,10 @@ export default function Home() {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        width: elementWidth,
-        height: Math.ceil(targetHeight),
-        windowWidth: elementWidth,
-        windowHeight: Math.ceil(targetHeight)
+        width: exportWidth,
+        height: exportHeight,
+        windowWidth: exportWidth,
+        windowHeight: exportHeight
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
@@ -1576,16 +1582,16 @@ export default function Home() {
 
                   <table className="document-table mb-0">
                     <tbody>
-                      <tr>
+                      <tr className="document-meta-row">
                         <td style={{ width: '65%' }}>
-                          <div className="d-flex align-items-start">
+                          <div className="document-field-line d-flex align-items-start">
                             <div style={{ width: '190px', flexShrink: 0 }}>Atas Faktur Pajak Nomor</div>
                             <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
                             <div className="fw-bold">{data.fakturNomor}</div>
                           </div>
                         </td>
                         <td>
-                          <div className="d-flex align-items-start">
+                          <div className="document-field-line d-flex align-items-start">
                             <div style={{ width: '75px', flexShrink: 0 }}>Tanggal</div>
                             <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
                             <div className="text-nowrap">{formatDateIndo(data.fakturTanggal)}</div>
@@ -1593,22 +1599,22 @@ export default function Home() {
                         </td>
                       </tr>
                       <tr>
-                        <td colSpan={2} className="text-center fw-bold bg-light uppercase">Penerima Jasa Kena Pajak</td>
+                        <td colSpan={2} className="document-section-title text-center fw-bold bg-light uppercase">Penerima Jasa Kena Pajak</td>
                       </tr>
                       <tr>
                         <td colSpan={2} className="p-0 border-0">
-                          <div className="p-3">
-                            <div className="d-flex mb-2 align-items-start">
+                          <div className="document-party-block p-3">
+                            <div className="document-field-line d-flex mb-2 align-items-start">
                               <div style={{ width: '100px', flexShrink: 0 }}>Nama</div>
                               <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
                               <div className="fw-bold text-uppercase">{data.penerima.name}</div>
                             </div>
-                            <div className="d-flex mb-2 align-items-start">
+                            <div className="document-field-line d-flex mb-2 align-items-start">
                               <div style={{ width: '100px', flexShrink: 0 }}>Alamat</div>
                               <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
                               <div className="text-uppercase">{data.penerima.address}</div>
                             </div>
-                            <div className="d-flex align-items-center">
+                            <div className="document-field-line d-flex align-items-center">
                               <div style={{ width: '100px', flexShrink: 0 }}>NPWP</div>
                               <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
                               {renderNPWP(data.penerima.npwp)}
@@ -1617,22 +1623,22 @@ export default function Home() {
                         </td>
                       </tr>
                       <tr>
-                        <td colSpan={2} className="text-center fw-bold bg-light uppercase">Kepada Pemberi Jasa Kena Pajak</td>
+                        <td colSpan={2} className="document-section-title text-center fw-bold bg-light uppercase">Kepada Pemberi Jasa Kena Pajak</td>
                       </tr>
                       <tr>
                         <td colSpan={2} className="p-0 border-0">
-                          <div className="p-3">
-                            <div className="d-flex mb-2 align-items-start">
+                          <div className="document-party-block p-3">
+                            <div className="document-field-line d-flex mb-2 align-items-start">
                               <div style={{ width: '100px', flexShrink: 0 }}>Nama</div>
                               <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
                               <div className="fw-bold text-uppercase">{data.pemberi.name}</div>
                             </div>
-                            <div className="d-flex mb-2 align-items-start">
+                            <div className="document-field-line d-flex mb-2 align-items-start">
                               <div style={{ width: '100px', flexShrink: 0 }}>Alamat</div>
                               <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
                               <div className="text-uppercase">{data.pemberi.address}</div>
                             </div>
-                            <div className="d-flex align-items-center">
+                            <div className="document-field-line d-flex align-items-center">
                               <div style={{ width: '100px', flexShrink: 0 }}>NPWP</div>
                               <div style={{ width: '20px', textAlign: 'center', flexShrink: 0 }}>:</div>
                               {renderNPWP(data.pemberi.npwp)}
@@ -1645,7 +1651,7 @@ export default function Home() {
 
                   <table className="document-table border-top-0">
                     <thead>
-                      <tr className="text-center fw-bold">
+                      <tr className="document-items-header text-center fw-bold">
                         <th style={{ width: '50px' }}>No. Urut</th>
                         <th>Jasa Kena Pajak yang dibatalkan</th>
                         <th style={{ width: '130px' }}>Penggantian JKP (Rp)</th>
@@ -1663,11 +1669,11 @@ export default function Home() {
                           <td className="text-end align-top">{formatCurrency(item.amount)}</td>
                         </tr>
                       ))}
-                      <tr className="fw-bold">
+                      <tr className="document-total-row fw-bold">
                         <td colSpan={2} className="text-end">Jumlah Penggantian JKP yang dibatalkan</td>
                         <td className="text-end">{formatCurrency(totalAmount)}</td>
                       </tr>
-                      <tr className="fw-bold">
+                      <tr className="document-total-row fw-bold">
                         <td colSpan={2} className="text-end">PPN yang diminta kembali</td>
                         <td className="text-end">{formatCurrency(ppnAmount)}</td>
                       </tr>
