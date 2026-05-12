@@ -79,6 +79,8 @@ interface PdfExportOptions {
   approval: boolean;
 }
 
+type PdfExportTarget = 'generator' | 'history-selected' | 'history-all';
+
 type PdfExportOptionKey = keyof PdfExportOptions;
 
 const pdfExportSectionItems: Array<{ key: PdfExportOptionKey; label: string }> = [
@@ -640,6 +642,7 @@ export default function Home() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [showPdfExportModal, setShowPdfExportModal] = useState(false);
   const [pdfExportOptions, setPdfExportOptions] = useState<PdfExportOptions>(initialPdfExportOptions);
+  const [pdfExportTarget, setPdfExportTarget] = useState<PdfExportTarget>('generator');
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<number[]>([]);
   const [isBulkExportingHistory, setIsBulkExportingHistory] = useState(false);
   
@@ -933,6 +936,7 @@ export default function Home() {
   const hasSelectedHistoryRows = selectedHistoryIds.length > 0;
   const hasVisibleHistoryRows = history.length > 0;
   const allVisibleHistorySelected = history.length > 0 && history.every((item) => selectedHistoryIds.includes(item.id));
+  const modalSelectionCount = pdfExportTarget === 'history-all' ? history.length : selectedHistoryIds.length;
 
   const handleExportCSV = () => {
     if (history.length === 0) return;
@@ -997,7 +1001,8 @@ export default function Home() {
     setPdfExportOptions({ ...options });
   };
 
-  const handleOpenPdfExportModal = () => {
+  const handleOpenPdfExportModal = (target: PdfExportTarget = 'generator') => {
+    setPdfExportTarget(target);
     setShowPdfExportModal(true);
   };
 
@@ -1005,6 +1010,18 @@ export default function Home() {
     if (!hasSelectedPdfSections) return;
 
     setShowPdfExportModal(false);
+
+    if (pdfExportTarget === 'history-selected') {
+      const selectedItems = history.filter((item) => selectedHistoryIds.includes(item.id));
+      await exportHistoryItemsToPdf(selectedItems, pdfExportOptions);
+      return;
+    }
+
+    if (pdfExportTarget === 'history-all') {
+      await exportHistoryItemsToPdf(history, pdfExportOptions);
+      return;
+    }
+
     await handleDownloadPDF(pdfExportOptions);
   };
 
@@ -1094,7 +1111,32 @@ export default function Home() {
     }
   };
 
-  const exportHistoryItemsToPdf = async (itemsToExport: any[]) => {
+  const applyPdfExportVisibility = (rootElement: HTMLElement, exportOptions: PdfExportOptions) => {
+    const toggleExportElements = (selector: string, isVisible: boolean) => {
+      rootElement.querySelectorAll(selector).forEach((node) => {
+        const element = node as HTMLElement;
+        element.style.display = isVisible ? '' : 'none';
+      });
+    };
+
+    toggleExportElements('.document-export-info', exportOptions.infoDocument);
+    toggleExportElements('.document-export-recipient', exportOptions.recipient);
+    toggleExportElements('.document-export-provider', exportOptions.provider);
+    toggleExportElements('.document-export-approval', exportOptions.approval);
+
+    const primaryTable = rootElement.querySelector('.document-primary-table') as HTMLElement | null;
+    const itemsTable = rootElement.querySelector('.document-items-table') as HTMLElement | null;
+
+    if (primaryTable && !exportOptions.infoDocument && !exportOptions.recipient && !exportOptions.provider) {
+      primaryTable.style.display = 'none';
+    }
+
+    if (itemsTable && !exportOptions.items) {
+      itemsTable.style.display = 'none';
+    }
+  };
+
+  const exportHistoryItemsToPdf = async (itemsToExport: any[], exportOptions: PdfExportOptions = pdfExportOptions) => {
     if (itemsToExport.length === 0 || isBulkExportingHistory) return;
 
     setIsBulkExportingHistory(true);
@@ -1109,6 +1151,8 @@ export default function Home() {
         if (!exportElement) {
           throw new Error('EXPORT_ELEMENT_NOT_FOUND');
         }
+
+        applyPdfExportVisibility(exportElement, exportOptions);
 
         await exportElementToPdf(exportElement, `Nota_Pembatalan_${notaData.nomor.replace(/\//g, '_')}.pdf`);
       }
@@ -1125,14 +1169,13 @@ export default function Home() {
   const handleExportSelectedHistoryPdf = async () => {
     if (!hasSelectedHistoryRows || isBulkExportingHistory) return;
 
-    const selectedItems = history.filter((item) => selectedHistoryIds.includes(item.id));
-    await exportHistoryItemsToPdf(selectedItems);
+    handleOpenPdfExportModal('history-selected');
   };
 
   const handleExportAllVisibleHistoryPdf = async () => {
     if (!hasVisibleHistoryRows || isBulkExportingHistory) return;
 
-    await exportHistoryItemsToPdf(history);
+    handleOpenPdfExportModal('history-all');
   };
 
   const handleDownloadPDF = async (exportOptions: PdfExportOptions = pdfExportOptions) => {
@@ -1140,28 +1183,7 @@ export default function Home() {
     const element = notaRef.current;
     const clonedElement = element.cloneNode(true) as HTMLDivElement;
 
-    const toggleExportElements = (selector: string, isVisible: boolean) => {
-      clonedElement.querySelectorAll(selector).forEach((node) => {
-        const element = node as HTMLElement;
-        element.style.display = isVisible ? '' : 'none';
-      });
-    };
-
-    toggleExportElements('.document-export-info', exportOptions.infoDocument);
-    toggleExportElements('.document-export-recipient', exportOptions.recipient);
-    toggleExportElements('.document-export-provider', exportOptions.provider);
-    toggleExportElements('.document-export-approval', exportOptions.approval);
-
-    const primaryTable = clonedElement.querySelector('.document-primary-table') as HTMLElement | null;
-    const itemsTable = clonedElement.querySelector('.document-items-table') as HTMLElement | null;
-
-    if (primaryTable && !exportOptions.infoDocument && !exportOptions.recipient && !exportOptions.provider) {
-      primaryTable.style.display = 'none';
-    }
-
-    if (itemsTable && !exportOptions.items) {
-      itemsTable.style.display = 'none';
-    }
+    applyPdfExportVisibility(clonedElement, exportOptions);
 
     await exportElementToPdf(clonedElement, `Nota_Pembatalan_${data.nomor.replace(/\//g, '_')}.pdf`);
   };
@@ -1550,7 +1572,7 @@ export default function Home() {
             </Button>
             {activeTab === 'generator' && (
               <div className="d-flex gap-2">
-                <Button variant="outline-info" size="sm" onClick={handleOpenPdfExportModal} className="fw-bold d-flex align-items-center gap-2">
+                <Button variant="outline-info" size="sm" onClick={() => handleOpenPdfExportModal('generator')} className="fw-bold d-flex align-items-center gap-2">
                   <Download size={16} /> PDF
                 </Button>
                 <Button variant="warning" size="sm" onClick={handlePrint} className="fw-bold d-flex align-items-center gap-2 text-dark">
@@ -2322,10 +2344,20 @@ export default function Home() {
 
       <Modal show={showPdfExportModal} onHide={() => setShowPdfExportModal(false)} centered>
         <Modal.Header closeButton>
-          <Modal.Title>Opsi Export PDF</Modal.Title>
+          <Modal.Title>
+            {pdfExportTarget === 'generator'
+              ? 'Opsi Export PDF'
+              : pdfExportTarget === 'history-all'
+                ? `Opsi Export PDF - Semua Data Halaman (${history.length})`
+                : `Opsi Export PDF - Data Terpilih (${modalSelectionCount})`}
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <p className="text-muted small mb-3">Pilih bagian dokumen yang ingin ikut dimasukkan ke PDF dengan font formal/legal.</p>
+          <p className="text-muted small mb-3">
+            {pdfExportTarget === 'generator'
+              ? 'Pilih bagian dokumen yang ingin ikut dimasukkan ke PDF dengan font formal/legal.'
+              : 'Walaupun file di history sudah dichecklist, tetap pilih opsi export PDF yang ingin dipakai untuk semua file yang akan diexport.'}
+          </p>
           <div className="d-flex flex-wrap gap-2 mb-3">
             <Button variant="outline-primary" size="sm" className="fw-bold" onClick={() => handleSetAllPdfExportOptions(true)}>
               Pilih Semua
@@ -2373,7 +2405,7 @@ export default function Home() {
             Batal
           </Button>
           <Button variant="primary" onClick={handleConfirmPdfExport} disabled={!hasSelectedPdfSections}>
-            Export PDF
+            {pdfExportTarget === 'generator' ? 'Export PDF' : `Export ${modalSelectionCount} PDF`}
           </Button>
         </Modal.Footer>
       </Modal>
